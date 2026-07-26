@@ -685,21 +685,20 @@ These are not built initially but the architecture accommodates them:
 
 ---
 
-## 17. Open Questions
+## 17. Open Questions (Resolved)
 
-1. **Trigger voltage:** Need to physically measure the CyberBrick 2.5mm output
-   to confirm signal levels. May need optocoupler circuit.
+1. **Trigger voltage:** TBD — will measure physically. Design the GPIO trigger
+   with configurable pull-up/pull-down and document optocoupler option.
 
-2. **Camera power management:** Does the D40 sleep after inactivity? May need
-   periodic keep-alive or wake-on-capture handling.
+2. **Camera power management:** TBD — external power supply in progress (dummy
+   battery adapter). Add keep-alive/wake handling to CameraService as needed.
 
-3. **Print event source:** Which monitoring software is currently running?
-   This determines the first `PrinterProvider` implementation beyond the
-   generic HTTP receiver.
+3. **Print event source:** No specific software committed. Build the generic
+   `HttpPrinterProvider` first — any monitoring tool can POST events to it.
 
-4. **Storage budget:** How much SD card space is available on the Pi? A 200-layer
-   print with 6MP JPEGs is roughly 600MB of frames. Need to size cleanup
-   thresholds.
+4. **Storage budget:** 128GB micro SD. At ~3MB/frame, that's ~40,000 frames
+   (~200 prints at 200 layers) before space pressure. Cleanup after upload
+   keeps this comfortable. NAS available for long-term archival.
 
-5. **Network reliability:** Should upload retry indefinitely or give up after N
-   attempts and alert? Current spec says 3 attempts — is that sufficient?
+5. **Upload retry policy:** 3 attempts with exponential backoff (5s/15s/45s).
+   Log failure and preserve video locally on exhaustion.

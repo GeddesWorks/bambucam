@@ -1,0 +1,13 @@
+# Core
+pyyaml>=6.0
+requests>=2.31
+
+# Upload
+appwrite>=5.0
+
+# GPIO (install on Pi only)
+# RPi.GPIO
+
+# Dev/Test
+pytest>=8.0
+pytest-mock>=3.12

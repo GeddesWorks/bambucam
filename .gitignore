@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.env
+config/config.yaml
+prints/
+logs/
+*.mp4
+*.jpg
+!config/config.yaml.example
+.pytest_cache/

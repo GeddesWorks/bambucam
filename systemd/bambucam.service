@@ -1,0 +1,16 @@
+[Unit]
+Description=BambuCam Timelapse Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/opt/bambucam
+ExecStart=/opt/bambucam/venv/bin/python -m bambucam.daemon
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/opt/bambucam/.env
+
+[Install]
+WantedBy=multi-user.target

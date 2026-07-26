@@ -1,0 +1,58 @@
+# BambuCam Configuration
+# Copy to config/config.yaml and edit values.
+# Secrets reference environment variables: ${VAR_NAME}
+
+# Trigger source
+trigger:
+  type: gpio              # gpio | bluetooth | mqtt
+  gpio_pin: 17
+  edge: rising            # rising | falling
+  debounce_ms: 200
+
+# Camera settings
+camera:
+  type: gphoto2_cli       # gphoto2_cli | gphoto2_native | mock
+  timeout_seconds: 30
+  retries: 3
+  retry_delay_seconds: 2
+
+# Capture storage
+capture:
+  base_dir: ./prints
+
+# Video compilation
+compile:
+  fps: 30
+  codec: libx264
+  pixel_format: yuv420p
+
+# Upload destination
+upload:
+  backend: appwrite       # appwrite | s3 | nas | none
+  appwrite:
+    endpoint: ${APPWRITE_ENDPOINT}
+    project_id: ${APPWRITE_PROJECT_ID}
+    api_key: ${APPWRITE_API_KEY}
+    bucket_id: ${APPWRITE_BUCKET_ID}
+  retry_attempts: 3
+  retry_backoff_seconds: [5, 15, 45]
+
+# Post-upload cleanup
+cleanup:
+  enabled: true
+  delete_frames: true
+  delete_video: true
+  keep_meta: true
+  keep_logs: true
+
+# Logging
+logging:
+  level: INFO             # DEBUG | INFO | WARNING | ERROR
+  format: json
+  file: ./logs/bambucam.log
+
+# Printer event source
+printer:
+  provider: http          # http | mqtt | mock
+  http:
+    listen_port: 8420
