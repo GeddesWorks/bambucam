@@ -174,6 +174,53 @@ Things that do **not** affect speed, all measured: persistent session via
 The camera clock was ~7s off and has been synced to the Pi, so EXIF timestamps
 are trustworthy.
 
+### Camera exposure — measured on a live print
+
+Working settings, verified sharp and correctly exposed on the A1:
+
+```
+shutterspeed 1/125   f/3.5 (wide open)   iso 1600   expprogram M
+```
+
+**Shoot no slower than 1/125.** The A1 is a bed-slinger, and the bed is still
+moving (or settling) when the shutter fires even with timelapse mode enabled.
+Measured: 1/125 sharp, 1/60 sharp, **1/30 visibly smeared** — the plate and part
+blur horizontally while the toolhead and rail stay sharp, which is the tell that
+it is bed motion and not camera shake. Checking that the toolhead is parked
+proves nothing; check the bed.
+
+The fix that buys back image quality is a dwell at layer change, in Bambu
+Studio under Printer Settings -> Machine G-code -> Layer change G-code:
+
+```gcode
+G4 P2000
+```
+
+Two seconds costs ~8 min over 243 layers and guarantees a stationary bed,
+which allows 1/60 at ISO 400 instead of ISO 1600 — a large noise improvement on
+a D40. Untested as of this writing: whether the CyberBrick fires as the park
+begins or after it completes. If frames are still soft, lengthen the dwell.
+
+**Measure the subject, not the frame.** `signalstats` YAVG over the whole
+image is dominated by the bright wall and reads ~30 points high. Crop to the
+plate first:
+
+```bash
+ffprobe -v error -f lavfi "movie=FRAME.jpg,crop=2000:640:450:800,signalstats"   -show_entries frame_tags=lavfi.signalstats.YAVG -of csv=p=0
+```
+
+Target ~110-120 on the plate region. For reference: 58 is clearly too dark, 24
+is unusable.
+
+**A brightness number cannot detect blur.** A frame measured 106 and looked
+like a success while being badly smeared. Always pull the actual image and look
+at it before declaring an exposure change good. File size is not an exposure
+signal either — a dark noisy frame can be large.
+
+All exposure settings are writable over PTP with `gphoto2 --set-config`, so
+they can be corrected mid-print without touching the camera. `capturemode` is
+the exception; the D40 rejects that write.
+
 ### Appwrite
 
 Fill `/opt/bambucam/.env` (`APPWRITE_ENDPOINT`, `APPWRITE_PROJECT_ID`,
