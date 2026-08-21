@@ -117,49 +117,51 @@ daemon looks healthy while the trigger never fires. The venv uses Debian's
 `python3-rpi-lgpio` via `--system-site-packages`; do not `pip install RPi.GPIO`
 into the venv, it shadows the working one.
 
-### Nikon D40 — working, but slow
+### Nikon D40 — working
 
 Capture is verified end to end on the Pi: `gphoto2 --auto-detect` sees
-`Nikon DSC D40 (PTP mode)`, and `scripts/test_camera.py` pulls a 287 KB
-3008x2000 baseline JPEG.
+`Nikon DSC D40 (PTP mode)`, and `scripts/test_camera.py` pulls a 3008x2000
+baseline JPEG.
 
-**Measured timing — 8.1s per frame, consistently.** Broken down with a
-clock-synced EXIF comparison:
+**2.4s per frame, shutter fires at t+0-1s.** Verified against EXIF with the
+camera clock synced to the Pi. The trigger-to-shutter latency is under a
+second, so no slicer gcode wait is needed.
 
-| Segment | Time |
-|---|---|
-| PTP session init (process startup) | ~0.3s |
-| Camera-side pre-shutter delay | **5-6s** |
-| Exposure (current settings) | 2.5s |
-| Download | ~free (goes to internal RAM) |
+Getting there was entirely about exposure settings. At `shutterspeed 2.5s`
+/ `ISO 3200` a frame cost **8.1s** with the shutter firing 5-6s late — the
+delay scales with exposure time, it is not fixed camera overhead. Adding light
+alone changes nothing in M mode, because M ignores metering: the shutter stays
+open exactly as long as you told it to. The fix is a fast shutter, not Auto.
 
-Things that do **not** help, all measured:
+Working settings, all writable over PTP:
 
-- Persistent session via `gphoto2 --shell`: 7.6s vs 8.1s — saves 0.5s
-- `capturetarget` Memory card vs Internal RAM: no difference
-- `longexpnr` Off (was On): no difference — turned off anyway
-
-So the shutter fires **5-6 seconds after the trigger**. The CyberBrick fires
-when the head parks at layer change; by the time the shutter opens the head has
-resumed printing. This needs a real-world check on an actual print before the
-design can be called sound.
-
-Current camera settings read over PTP:
-
-```
-shutterspeed  2.5s      iso 3200      f/5.3     expprogram M
-imagequality  JPEG Fine  imagesize 3008x2000
-focusmode     Manual     whitebalance Daylight
-capturemode   Burst      <- should be Single; the D40 rejects the PTP write
+```bash
+gphoto2 --set-config shutterspeed=1/125
+gphoto2 --set-config iso=400
 ```
 
-ISO 3200 at 2.5s says the scene is dark. **Lighting the print area** is the
-highest-leverage fix: it buys a fast shutter (removing 2.5s of the 8.1s), drops
-ISO 3200 noise, and eliminates exposure drift between day and night on a long
-print. It does not touch the 5-6s pre-shutter delay.
+```
+expprogram M    shutterspeed 1/125   f/4.5    iso 400
+imagequality JPEG Fine   imagesize 3008x2000  focusmode Manual
+whitebalance Daylight    longexpnr Off
+capturemode Burst   <- should be Single; the D40 rejects this PTP write
+```
+
+Stay in **M**, not Auto. Auto is fast for the same reason (it picks a quick
+shutter in good light) but re-meters every frame, so brightness and colour
+drift across the timelapse, and on the Auto dial position the D40 pops its
+built-in flash — firing on every layer, draining the battery.
+
+Do not add light and leave the shutter slow; that just overexposes. Frames are
+~2.1 MB well-exposed (a 185 KB frame means under- or overexposed and flat).
+At ~2 MB, a 300-frame print is ~600 MB against 110 GB free.
+
+Things that do **not** affect speed, all measured: persistent session via
+`gphoto2 --shell` (saves 0.5s), `capturetarget` card vs internal RAM, and
+`longexpnr`.
 
 The camera clock was ~7s off and has been synced to the Pi, so EXIF timestamps
-are now trustworthy.
+are trustworthy.
 
 ### Appwrite
 
