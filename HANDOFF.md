@@ -61,12 +61,12 @@ This exact sequence was run against a Linux stand-in and passed all the way
 through `IDLE → CAPTURING → COMPILING → UPLOADING → VERIFYING → CLEANUP`:
 
 ```bash
-curl -X POST http://192.168.1.209:8420/ -H 'Content-Type: application/json' \
+curl -X POST http://192.168.1.243:8420/ -H 'Content-Type: application/json' \
   -d '{"source":"Bambuddy","event":"print_start","printer":"Jeff","filename":"test-benchy.gcode"}'
 
 # wait ~20s — mock trigger fires every 5s, frames land in prints/<job>/frames/
 
-curl -X POST http://192.168.1.209:8420/ -H 'Content-Type: application/json' \
+curl -X POST http://192.168.1.243:8420/ -H 'Content-Type: application/json' \
   -d '{"source":"Bambuddy","event":"print_complete","printer":"Jeff","filename":"test-benchy.gcode"}'
 ```
 
