@@ -273,8 +273,17 @@ class Orchestrator:
 
     def _do_verify(self) -> None:
         if not self._meta.upload_file_id:
-            self._sm.force_state(State.CLEANUP)
-            self._do_cleanup()
+            # Reachable after a crash between a successful upload and the
+            # metadata write. Cleaning up here would delete the frames and the
+            # video while nothing was ever archived. ERROR_UPLOAD preserves
+            # them and recovery retries the upload on the next start.
+            log_event(logger, "VERIFY_FAILED",
+                      "No upload id to verify — retrying upload instead of "
+                      "cleaning up",
+                      level="ERROR", job_id=self._meta.job_id)
+            self._meta.upload_status = "failed"
+            self._sm.transition_to(State.ERROR_UPLOAD)
+            self._save_meta()
             return
 
         if self._uploader.verify(self._meta.upload_file_id):

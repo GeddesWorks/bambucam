@@ -99,3 +99,17 @@ def test_mount_check_uses_the_configured_mount_point(tmp_path, video):
                       mount_point=str(tmp_path / "never-mounted"), mount_check=True)
     assert up2.upload(video, meta()).success is False,         "an unmounted configured mount point must block the write"
     assert inferred_would_pass in (True, False)  # depends on host /tmp
+
+
+def test_verify_without_upload_id_must_not_trigger_cleanup():
+    """A crash between upload success and the metadata write leaves VERIFYING
+    with no file id. Cleaning up there deletes frames that were never
+    archived, so it must error out and let recovery retry the upload."""
+    import inspect
+
+    from bambucam.orchestrator import Orchestrator
+
+    src = inspect.getsource(Orchestrator._do_verify)
+    head = src.split("if self._uploader.verify")[0]
+    assert "ERROR_UPLOAD" in head, "missing file id must route to ERROR_UPLOAD"
+    assert "_do_cleanup()" not in head, "must not clean up without a verified upload"
