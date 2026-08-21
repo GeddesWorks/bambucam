@@ -16,8 +16,23 @@ except ImportError:
 
 
 class GpioTriggerProvider(TriggerProvider):
+    """Fires on a contact closure to ground.
+
+    ``debounce_ms`` must be well BELOW the trigger's pulse width, which is the
+    opposite of the intuition from legacy RPi.GPIO. Current Raspberry Pi OS
+    supplies rpi-lgpio, where bouncetime becomes
+    ``lgpio.gpio_set_debounce_micros`` — the new level must stay stable for the
+    whole debounce period before the edge is reported at all, rather than
+    suppressing further edges after reporting one. Set it longer than the pulse
+    and every pulse is silently discarded as a glitch: no trigger, no error.
+
+    The CyberBrick closes for ~100ms with no measured bounce, so 20ms leaves a
+    5x margin while still rejecting real contact chatter. Measure an unfamiliar
+    trigger with scripts/probe_gpio.py before changing this.
+    """
+
     def __init__(self, pin: int = 17, edge: str = "rising",
-                 debounce_ms: int = 200):
+                 debounce_ms: int = 20):
         if not _HAS_GPIO:
             raise RuntimeError("RPi.GPIO not available — not running on a Raspberry Pi?")
         self._pin = pin

@@ -13,7 +13,7 @@ class TriggerConfig:
     type: str = "gpio"
     gpio_pin: int = 17
     edge: str = "rising"
-    debounce_ms: int = 200
+    debounce_ms: int = 20
     interval_seconds: float = 5.0
     bambuddy_url: str = ""
     bambuddy_printer_id: int = 0

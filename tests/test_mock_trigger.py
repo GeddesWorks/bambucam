@@ -57,3 +57,12 @@ def test_interval_seconds_loads_from_yaml(tmp_path):
     config = load_config(config_file)
     assert config.trigger.type == "mock"
     assert config.trigger.interval_seconds == 1.5
+
+
+def test_gpio_debounce_default_is_below_typical_pulse_width():
+    """rpi-lgpio only reports an edge after the level holds for debounce_ms, so
+    a debounce longer than the trigger pulse discards every pulse silently.
+    The CyberBrick closes for ~100ms."""
+    from bambucam.config import TriggerConfig
+
+    assert TriggerConfig().debounce_ms < 100
