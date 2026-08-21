@@ -6,25 +6,45 @@ Branch: `claude/new-project-spec-023uvp` · Repo: `GeddesWorks/bambucam` (public
 
 | Step | State |
 |---|---|
-| Codebase + tests | Done — 50 tests pass (1 skips without ffprobe) |
-| End-to-end pipeline verified with mocks | Done (on a Linux stand-in host, not the Pi) |
-| Bambuddy webhook provider configured | Done — provider id 1, scoped to Jeff, pointed at the Pi |
-| Deploy to the Pi | **Blocked — SSH credentials rejected** |
-| GPIO trigger wiring | Not started (hardware) |
+| Codebase + tests | Done — 50 tests pass on the Pi |
+| Deployed to the Pi | Done — `bambulapse` at **192.168.1.243**, running and enabled at boot |
+| End-to-end pipeline verified with mocks | Done — on the Pi itself |
+| Bambuddy webhook configured + delivering | Done — provider id 1, scoped to Jeff |
+| GPIO edge detection | Verified working on pin 17 (nothing wired yet) |
+| CyberBrick trigger wiring | Not started (hardware) |
 | Nikon D40 capture | Not started (hardware) |
 | Appwrite upload | Not started (needs credentials) |
 
-## Blocked: Pi SSH
+## The Pi
 
-`192.168.1.209` answers on port 22 (`OpenSSH_10.0p2 Debian-7`) and offers
-`publickey,password`, but `collin` + the supplied password is rejected. Tried
-`collin`, `pi`, `Collin`, and the local `~/.ssh/id_ed25519` key. Port 22 is the
-only open port on the Pi. Correct credentials (or an authorized public key) are
-needed before deployment can proceed.
+**The Pi 3B is `192.168.1.243`, not `.209`.** `.209` is a different, newer Pi on
+the network (`E4:5F:01` OUI); the 3B is `b8:27:eb:18:1d:3f`. Chasing `.209` is
+what made the credentials look wrong at first.
 
-## Deploying to the Pi
+- Hostname `bambulapse`, Debian 13 (trixie), kernel 6.18 aarch64, 4 cores, 905 MB RAM
+- Currently on **ethernet**. Wi-Fi never associated — if you want it wireless
+  that still needs sorting (`rfkill list`, then `nmcli device wifi connect`)
+- The address is DHCP. Worth a reservation on the gateway, since the Bambuddy
+  webhook URL is hardcoded to it
+- `collin`'s SSH key auth is installed; sudo requires a password
 
-Once SSH works:
+## Current runtime state
+
+`/opt/bambucam/config/config.yaml` is in full mock mode:
+
+```yaml
+trigger:  {type: mock, interval_seconds: 5}   # fake pulse every 5s
+camera:   {type: mock}                        # valid 64x64 placeholder JPEG
+upload:   {backend: none}                     # compiles video, uploads nothing
+```
+
+```bash
+systemctl status bambucam
+journalctl -u bambucam -f
+curl http://192.168.1.243:8420/health
+```
+
+## Rebuilding from scratch
 
 ```bash
 sudo apt-get update && sudo apt-get install -y git
@@ -33,64 +53,41 @@ sudo git clone -b claude/new-project-spec-023uvp \
 sudo bash /opt/bambucam/scripts/setup_pi.sh
 ```
 
-`setup_pi.sh` installs gphoto2, ffmpeg, the Python venv, a GPIO library
-(`rpi-lgpio`, falling back to `RPi.GPIO`), and the systemd unit. It does not
-start the service.
-
-Then put `/opt/bambucam/config/config.yaml` into mock mode for the first run:
-
-```yaml
-trigger:
-  type: mock            # fires a fake pulse every interval_seconds
-  interval_seconds: 5
-camera:
-  type: mock            # writes a valid 64x64 placeholder JPEG per frame
-upload:
-  backend: none         # NoOpUploader — compiles the video, uploads nothing
-```
-
-```bash
-sudo systemctl start bambucam
-journalctl -u bambucam -f
-curl http://localhost:8420/health
-```
+Installs gphoto2, ffmpeg, the venv (with `--system-site-packages`), a working
+GPIO library, and the systemd unit. It does not start the service.
 
 ## Verifying end to end
 
-This exact sequence was run against a Linux stand-in and passed all the way
-through `IDLE → CAPTURING → COMPILING → UPLOADING → VERIFYING → CLEANUP`:
+This exact sequence was run against the Pi and passed through
+`IDLE → CAPTURING → COMPILING → UPLOADING → VERIFYING → CLEANUP`:
 
 ```bash
 curl -X POST http://192.168.1.243:8420/ -H 'Content-Type: application/json' \
   -d '{"source":"Bambuddy","event":"print_start","printer":"Jeff","filename":"test-benchy.gcode"}'
 
-# wait ~20s — mock trigger fires every 5s, frames land in prints/<job>/frames/
+# wait ~35s — mock trigger fires every 5s, frames land in prints/<job>/frames/
 
 curl -X POST http://192.168.1.243:8420/ -H 'Content-Type: application/json' \
   -d '{"source":"Bambuddy","event":"print_complete","printer":"Jeff","filename":"test-benchy.gcode"}'
 ```
 
-Expect `/opt/bambucam/prints/<job-id>/meta.json` with `video_compiled: true`,
-`upload_status: verified`, and (with cleanup enabled) frames and video removed.
+Result: 10 frames captured, `meta.json` with `video_compiled: true` and
+`upload_status: verified`, frames and video cleaned up.
 
-## Bambuddy — already configured
+## Bambuddy — configured
 
-Bambuddy is LXC 139 on node `BIG`, reachable at `http://192.168.1.90:8000`.
-Notification provider id 1 is created and enabled:
+Bambuddy is LXC 139 on node `BIG`, at `http://192.168.1.90:8000`. Notification
+provider **id 1** is created and enabled:
 
-- Name: `BambuCam Timelapse`
-- Type: webhook, payload format `generic`
-- URL: `http://192.168.1.209:8420/`
+- Name: `BambuCam Timelapse`, type webhook, payload format `generic`
+- URL: `http://192.168.1.243:8420/`
 - Scoped to `printer_id: 1` (Jeff, 192.168.1.241) — Esmirelda is printer 2 and
   will not trigger captures
 - Events: print start / complete / failed / stopped only; everything else off
 
-Delivery was verified for real: Bambuddy's own test send reached a running
-BambuCam instance and was acknowledged. Bambuddy's generic payload carries
-`event` plus the template variables (`printer`, `filename`, …) at the top
-level, which is what `bambucam/printer/http.py` parses.
-
-Re-test at any time:
+Delivery to the Pi is verified. Bambuddy's generic payload carries `event` plus
+the template variables (`printer`, `filename`, …) at the top level, which is
+what `bambucam/printer/http.py` parses.
 
 ```bash
 curl -X POST -H "X-API-Key: $BAMBUDDY_API_KEY" \
@@ -111,11 +108,14 @@ voltage rather than a contact closure, an optocoupler is required.
 
 - 2.5mm tip → GPIO 17, sleeve → GND
 - Config: `trigger: {type: gpio, gpio_pin: 17, edge: falling}` (internal pull-up,
-  pin idles HIGH and drops LOW on trigger)
+  pin idles HIGH and drops LOW on trigger — confirmed reading HIGH on the bench)
 - Test: `/opt/bambucam/venv/bin/python /opt/bambucam/scripts/test_gpio.py 17 falling`
 
-If the daemon logs `TRIGGER_UNAVAILABLE` at startup, the GPIO library did not
-install — the daemon runs but captures nothing.
+Edge detection is verified working. Note that legacy `RPi.GPIO` is broken on
+this image — it imports and reads pins but `add_event_detect()` fails, so the
+daemon looks healthy while the trigger never fires. The venv uses Debian's
+`python3-rpi-lgpio` via `--system-site-packages`; do not `pip install RPi.GPIO`
+into the venv, it shadows the working one.
 
 ### Nikon D40
 
