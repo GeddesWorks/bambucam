@@ -53,6 +53,7 @@ class AppwriteConfig:
 @dataclass
 class NasConfig:
     dir: str = "/mnt/nas/BambuCam"
+    mount_point: str = "/mnt/nas"
     mount_check: bool = True
 
 

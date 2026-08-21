@@ -45,6 +45,7 @@ def _build_uploader(config: BambuCamConfig) -> Uploader:
         from bambucam.upload.nas import NasUploader
         return NasUploader(
             base_dir=config.upload.nas.dir,
+            mount_point=config.upload.nas.mount_point,
             mount_check=config.upload.nas.mount_check,
         )
     from bambucam.upload.appwrite import AppwriteUploader

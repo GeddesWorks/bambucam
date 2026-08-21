@@ -25,30 +25,27 @@ class NasUploader(Uploader):
     """
 
     def __init__(self, base_dir: str = "/mnt/nas/BambuCam",
+                 mount_point: str = "/mnt/nas",
                  mount_check: bool = True):
         self._base = Path(base_dir)
+        self._mount_point = Path(mount_point)
         self._mount_check = mount_check
 
     def _assert_mounted(self) -> None:
         """A missing share looks like an ordinary empty directory.
 
-        The archive path must sit under a real mount point other than root.
-        Checking "is any ancestor a mount point" is not enough — '/' always
-        is, so that check passes everywhere and protects nothing.
+        Check the configured mount point explicitly. Inferring it by walking
+        ancestors for "some mount point" does not work: '/' always qualifies,
+        and on this Pi so does '/tmp', so the check would pass on paths that
+        are nowhere near the share.
         """
         if not self._mount_check:
             return
-        probe = self._base if self._base.exists() else self._base.parent
-        root = Path(probe.anchor or "/")
-        for candidate in (probe, *probe.parents):
-            if candidate == root:
-                break
-            if os.path.ismount(candidate):
-                return
-        raise RuntimeError(
-            f"{self._base} is not under a mounted network share — "
-            "refusing to write (this would fill the local disk instead)"
-        )
+        if not os.path.ismount(self._mount_point):
+            raise RuntimeError(
+                f"{self._mount_point} is not mounted — refusing to archive "
+                "(writing here would fill the local disk instead of the NAS)"
+            )
 
     @staticmethod
     def _job_datetime(metadata: dict, file_path: Path) -> datetime:

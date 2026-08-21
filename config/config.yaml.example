@@ -42,7 +42,8 @@ upload:
   # nas | appwrite | none
   backend: nas
   nas:
-    dir: /mnt/nas/BambuCam    # SMB share mounted via /etc/fstab
+    dir: /mnt/nas/BambuCam    # where videos are archived
+    mount_point: /mnt/nas     # SMB share mount point, checked before writing
     mount_check: true         # refuse to write if the share is not mounted,
                               # which otherwise silently fills the SD card
   appwrite:

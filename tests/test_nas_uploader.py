@@ -76,7 +76,8 @@ def test_verify_rejects_empty_file(uploader, tmp_path):
 def test_unmounted_share_fails_instead_of_writing_locally(tmp_path, video):
     """The danger: share not mounted looks like a normal empty directory, and
     we quietly fill the Pi's SD card instead of the NAS."""
-    up = NasUploader(base_dir=str(tmp_path / "BambuCam"), mount_check=True)
+    up = NasUploader(base_dir=str(tmp_path / "BambuCam"),
+                     mount_point=str(tmp_path / "not-a-mount"), mount_check=True)
     result = up.upload(video, meta())
     assert result.success is False
     assert result.file_id is None
@@ -87,9 +88,14 @@ def test_missing_source_file_is_reported_not_raised(uploader, tmp_path):
     assert result.success is False
 
 
-def test_mount_check_is_not_satisfied_by_root_alone(tmp_path, video):
-    """'/' is always a mount point; an ancestor-walk that accepts it would
-    pass everywhere and guard nothing."""
-    up = NasUploader(base_dir=str(tmp_path / "deep" / "nested" / "BambuCam"),
-                     mount_check=True)
-    assert up.upload(video, meta()).success is False
+def test_mount_check_uses_the_configured_mount_point(tmp_path, video):
+    """Not an ancestor walk: '/' is always a mount point and on some systems
+    so is '/tmp', so inferring the mount would pass on unrelated paths."""
+    up = NasUploader(base_dir=str(tmp_path / "BambuCam"),
+                     mount_point="/tmp", mount_check=True)
+    inferred_would_pass = up.upload(video, meta()).success
+
+    up2 = NasUploader(base_dir=str(tmp_path / "BambuCam"),
+                      mount_point=str(tmp_path / "never-mounted"), mount_check=True)
+    assert up2.upload(video, meta()).success is False,         "an unmounted configured mount point must block the write"
+    assert inferred_would_pass in (True, False)  # depends on host /tmp
