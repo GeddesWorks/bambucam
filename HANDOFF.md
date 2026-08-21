@@ -12,8 +12,9 @@ Branch: `claude/new-project-spec-023uvp` · Repo: `GeddesWorks/bambucam` (public
 | Bambuddy webhook configured + delivering | Done — provider id 1, scoped to Jeff |
 | CyberBrick trigger wired | Done — pin 17, verified firing the camera |
 | Full chain dry run | Done — 8 presses, 8 frames, compiled to MP4 |
-| Nikon D40 capture | Done — 2.4s per frame, zero failures |
-| Appwrite upload | Not started (needs credentials) |
+| Nikon D40 capture | Done — 2.4s per frame |
+| First real print | Partial — 13 frames, camera battery died |
+| Archive to NAS | Done — verified end to end |
 
 ## The Pi
 
@@ -221,11 +222,49 @@ All exposure settings are writable over PTP with `gphoto2 --set-config`, so
 they can be corrected mid-print without touching the camera. `capturemode` is
 the exception; the D40 rejects that write.
 
-### Appwrite
+### Archiving to the NAS — working
 
-Fill `/opt/bambucam/.env` (`APPWRITE_ENDPOINT`, `APPWRITE_PROJECT_ID`,
-`APPWRITE_API_KEY`, `APPWRITE_BUCKET_ID`), set `upload: backend: appwrite`,
-then `/opt/bambucam/venv/bin/python /opt/bambucam/scripts/test_upload.py`.
+Finished videos are archived to the `media` share on **192.168.1.54**, which
+allows **anonymous/guest** access, so there are no credentials anywhere.
+
+```
+//192.168.1.54/media /mnt/nas cifs guest,uid=1000,gid=1000,vers=3.0,file_mode=0664,dir_mode=0775,_netdev,nofail 0 0
+```
+
+That line is in `/etc/fstab`; `_netdev,nofail` means a NAS outage delays nothing
+at boot. Requires `cifs-utils` (and `smbclient` for listing shares).
+
+Files land as `BambuCam/<year>/<YYYY-MM-DD_HHMM>_<job-slug>.mp4`, dated from the
+print start rather than the upload so archives sort chronologically. Verified:
+a real 4.6 MB video copied with a matching md5, and a full pipeline run
+archived, verified, and cleaned up with `meta.json` retaining `upload_file_id`.
+
+Two failure modes the uploader defends against, both worth keeping:
+
+- **An unmounted share looks like an ordinary empty directory.** Writing blindly
+  would fill the Pi's SD card while appearing to succeed, so `mount_check`
+  refuses unless the configured `mount_point` is genuinely mounted. Check the
+  mount point explicitly — walking ancestors for "some mount point" passes on
+  `/` everywhere and on `/tmp` on this Pi, guarding nothing.
+- **An interrupted copy would leave a truncated file that looks complete.** The
+  copy goes to a dotfile and is renamed into place, and never overwrites an
+  existing archive when two prints share a minute.
+
+Appwrite remains implemented but unconfigured; `.env` still has empty
+credentials. The NAS backend supersedes it unless offsite copies are wanted.
+
+**Cleanup is now enabled** and only runs after a verified upload. A verify
+failure routes to `ERROR_UPLOAD`, preserving frames and video for the next
+start to retry.
+
+### Adding a config section
+
+`config.upload.nas` crashed the daemon at startup with
+`AttributeError: 'dict' object has no attribute 'dir'` because new nested
+sections must be registered in `_NESTED_TYPES` in `bambucam/config.py` or they
+load as plain dicts. Unit tests that construct a backend directly never catch
+this — `tests/test_config_nested.py` now walks every nested dataclass field and
+fails if one is unregistered.
 
 ## Notes
 
