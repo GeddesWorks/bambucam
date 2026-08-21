@@ -48,20 +48,46 @@ fi
 
 # Python environment
 echo "[4/7] Setting up Python virtual environment..."
-python3 -m venv "$INSTALL_DIR/venv"
+# --system-site-packages so the venv can see Debian's python3-rpi-lgpio,
+# which is the only GPIO library that actually works on current images.
+python3 -m venv --system-site-packages "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --upgrade pip -q
 "$INSTALL_DIR/venv/bin/pip" install -e ".[dev]" -q
 
-# GPIO library for the CyberBrick trigger. rpi-lgpio is the drop-in
-# RPi.GPIO replacement that works on current Raspberry Pi OS (Bookworm and
-# later); fall back to legacy RPi.GPIO on older images. Without one of these
-# the daemon starts but logs TRIGGER_UNAVAILABLE and captures nothing.
+# GPIO library for the CyberBrick trigger.
+#
+# Legacy RPi.GPIO imports and reads pins fine on current Raspberry Pi OS but
+# add_event_detect() raises "Failed to add edge detection" — which is exactly
+# what GpioTriggerProvider needs, so the trigger silently never fires. Use
+# rpi-lgpio (a drop-in providing the RPi.GPIO API on top of lgpio) instead.
+#
+# Prefer Debian's python3-rpi-lgpio: pip's rpi-lgpio has to build lgpio from
+# source, which needs swig and fails on a stock image.
 echo "  Installing GPIO library..."
-if ! "$INSTALL_DIR/venv/bin/pip" install rpi-lgpio -q 2>/dev/null; then
-    if ! "$INSTALL_DIR/venv/bin/pip" install RPi.GPIO -q 2>/dev/null; then
-        echo "  WARNING: no GPIO library installed — the GPIO trigger will not work."
-        echo "           Install rpi-lgpio or RPi.GPIO manually before wiring the trigger."
-    fi
+apt-get install -y -qq python3-rpi-lgpio 2>/dev/null || true
+
+# Legacy RPi.GPIO inside the venv would shadow the system rpi-lgpio.
+"$INSTALL_DIR/venv/bin/pip" uninstall -y RPi.GPIO -q 2>/dev/null || true
+
+if ! "$INSTALL_DIR/venv/bin/python" -c "import RPi.GPIO" 2>/dev/null; then
+    "$INSTALL_DIR/venv/bin/pip" install rpi-lgpio -q 2>/dev/null || true
+fi
+
+# Import is not enough — confirm edge detection actually works.
+if "$INSTALL_DIR/venv/bin/python" - <<'GPIOCHECK' 2>/dev/null
+import RPi.GPIO as GPIO
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(17, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.add_event_detect(17, GPIO.FALLING, callback=lambda c: None, bouncetime=200)
+GPIO.remove_event_detect(17)
+GPIO.cleanup()
+GPIOCHECK
+then
+    echo "  GPIO edge detection verified."
+else
+    echo "  WARNING: GPIO edge detection is not working."
+    echo "           The daemon will run but the trigger will never fire."
+    echo "           Try: sudo apt-get install python3-rpi-lgpio"
 fi
 
 # Create runtime directories
