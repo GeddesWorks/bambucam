@@ -130,6 +130,7 @@ def _resolve_env_vars(obj: object) -> object:
 
 _NESTED_TYPES: dict[str, type] = {
     "appwrite": AppwriteConfig,
+    "nas": NasConfig,
     "http": PrinterHttpConfig,
 }
 
