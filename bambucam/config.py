@@ -51,9 +51,16 @@ class AppwriteConfig:
 
 
 @dataclass
+class NasConfig:
+    dir: str = "/mnt/nas/BambuCam"
+    mount_check: bool = True
+
+
+@dataclass
 class UploadConfig:
     backend: str = "appwrite"
     appwrite: AppwriteConfig = field(default_factory=AppwriteConfig)
+    nas: NasConfig = field(default_factory=NasConfig)
     retry_attempts: int = 3
     retry_backoff_seconds: list[float] = field(default_factory=lambda: [5.0, 15.0, 45.0])
 

@@ -39,7 +39,12 @@ compile:
 
 # Upload destination
 upload:
-  backend: appwrite       # appwrite | s3 | nas | none
+  # nas | appwrite | none
+  backend: nas
+  nas:
+    dir: /mnt/nas/BambuCam    # SMB share mounted via /etc/fstab
+    mount_check: true         # refuse to write if the share is not mounted,
+                              # which otherwise silently fills the SD card
   appwrite:
     endpoint: ${APPWRITE_ENDPOINT}
     project_id: ${APPWRITE_PROJECT_ID}

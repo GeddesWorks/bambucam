@@ -41,6 +41,12 @@ def _build_uploader(config: BambuCamConfig) -> Uploader:
     if config.upload.backend == "none":
         from bambucam.upload.none import NoOpUploader
         return NoOpUploader()
+    if config.upload.backend == "nas":
+        from bambucam.upload.nas import NasUploader
+        return NasUploader(
+            base_dir=config.upload.nas.dir,
+            mount_check=config.upload.nas.mount_check,
+        )
     from bambucam.upload.appwrite import AppwriteUploader
     aw = config.upload.appwrite
     return AppwriteUploader(
