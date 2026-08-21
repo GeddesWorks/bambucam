@@ -10,9 +10,9 @@ Branch: `claude/new-project-spec-023uvp` · Repo: `GeddesWorks/bambucam` (public
 | Deployed to the Pi | Done — `bambulapse` at **192.168.1.243**, running and enabled at boot |
 | End-to-end pipeline verified with mocks | Done — on the Pi itself |
 | Bambuddy webhook configured + delivering | Done — provider id 1, scoped to Jeff |
-| GPIO edge detection | Verified working on pin 17 (nothing wired yet) |
-| CyberBrick trigger wiring | Not started (hardware) |
-| Nikon D40 capture | Not started (hardware) |
+| CyberBrick trigger wired | Done — pin 17, verified firing the camera |
+| Full chain dry run | Done — 8 presses, 8 frames, compiled to MP4 |
+| Nikon D40 capture | Done — 2.4s per frame, zero failures |
 | Appwrite upload | Not started (needs credentials) |
 
 ## The Pi
@@ -101,21 +101,32 @@ print instead.
 
 ## Remaining hardware work
 
-### GPIO trigger
+### GPIO trigger — wired and working
 
-MEASURE THE SIGNAL WITH A MULTIMETER FIRST. If the CyberBrick trigger outputs
-voltage rather than a contact closure, an optocoupler is required.
+CyberBrick shutter port → GPIO 17 (physical pin 11), sleeve → GND (pin 9).
+Measured with `scripts/probe_gpio.py`: idle HIGH, **~100ms LOW pulse**, zero
+bounce (the controller switches solid-state, not a relay). A dry contact
+closure with no voltage on the line, so it drives the pin directly with no
+optocoupler or series resistor.
 
-- 2.5mm tip → GPIO 17, sleeve → GND
-- Config: `trigger: {type: gpio, gpio_pin: 17, edge: falling}` (internal pull-up,
-  pin idles HIGH and drops LOW on trigger — confirmed reading HIGH on the bench)
-- Test: `/opt/bambucam/venv/bin/python /opt/bambucam/scripts/test_gpio.py 17 falling`
+The mono (2-contact) plug in use shorts the jack's ring to sleeve, holding
+"focus" asserted permanently. Harmless with no camera on that port — but do not
+plug this same cable into a camera.
 
-Edge detection is verified working. Note that legacy `RPi.GPIO` is broken on
-this image — it imports and reads pins but `add_event_detect()` fails, so the
-daemon looks healthy while the trigger never fires. The venv uses Debian's
-`python3-rpi-lgpio` via `--system-site-packages`; do not `pip install RPi.GPIO`
-into the venv, it shadows the working one.
+**`debounce_ms` must be BELOW the pulse width, not above it.** This is inverted
+from legacy RPi.GPIO and cost a full debugging cycle. Current Raspberry Pi OS
+supplies rpi-lgpio, where `bouncetime` becomes
+`lgpio.gpio_set_debounce_micros`: the level must stay stable for the whole
+debounce period before the edge is reported, rather than suppressing further
+edges after reporting one. The old 200ms default exceeded the 100ms pulse, so
+every trigger was silently discarded — the daemon sat in CAPTURING and captured
+nothing, with no error anywhere in the log. Default is now 20ms.
+
+Symptom to recognise: `probe_gpio.py` (which polls) sees every pulse while the
+daemon sees none. That combination means the debounce filter, not the wiring.
+
+Verified on hardware: 8 button presses produced 8 frames, no retries, no
+failures, compiled to a 3008x2000 MP4.
 
 ### Nikon D40 — working
 
