@@ -1,8 +1,25 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+
+_UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def slugify_job_name(name: str, max_length: int = 60) -> str:
+    """Reduce a gcode name to something safe to put in a path.
+
+    Both gphoto2 (--filename) and ffmpeg (image2 input pattern) parse the
+    WHOLE path as a format string, so a '%' anywhere in it breaks them. Bambu
+    Studio names prints things like "0.2mm layer, 2 walls, 15% infill", so this
+    is the common case, not an edge case. Whitelisting is safer than escaping
+    per tool, since the path reaches several tools with different rules.
+    """
+    slug = _UNSAFE.sub("-", name)
+    slug = re.sub(r"-{2,}", "-", slug).strip("-.")
+    return slug[:max_length].strip("-.") or "print"
 
 
 @dataclass

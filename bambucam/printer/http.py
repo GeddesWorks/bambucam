@@ -7,7 +7,7 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Callable
 
-from bambucam.models import PrintJob
+from bambucam.models import PrintJob, slugify_job_name
 from bambucam.printer.base import PrinterProvider
 
 logger = logging.getLogger("bambucam")
@@ -39,7 +39,7 @@ def _parse_bambuddy_payload(data: dict) -> tuple[str | None, PrintJob | None]:
     filename = data.get("filename", "unknown")
     job_name = filename.replace(".gcode", "").replace(".3mf", "")
     timestamp = data.get("timestamp", "")
-    job_id = f"{job_name}-{int(time.time())}" if event == "print_started" else ""
+    job_id = f"{slugify_job_name(job_name)}-{int(time.time())}" if event == "print_started" else ""
 
     job = PrintJob(
         job_id=job_id,

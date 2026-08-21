@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import logging
+import os
+import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -23,21 +26,29 @@ class GPhoto2Camera(CameraService):
         destination.parent.mkdir(parents=True, exist_ok=True)
         last_error: Exception | None = None
 
+        # gphoto2 parses --filename as a FORMAT string, so any '%' in the path
+        # is read as a specifier and the capture fails with "Invalid format".
+        # Job names come from gcode filenames, where "15% infill" is routine.
+        # Capture to a path we control, then move it into place.
+        staging = Path(tempfile.gettempdir()) / f"bambucam-capture-{os.getpid()}.jpg"
+
         for attempt in range(1, self._retries + 1):
             try:
+                staging.unlink(missing_ok=True)
                 result = subprocess.run(
                     [
                         "gphoto2",
                         "--capture-image-and-download",
-                        "--filename", str(destination),
+                        "--filename", str(staging),
                         "--force-overwrite",
                     ],
                     capture_output=True,
                     text=True,
                     timeout=self._timeout,
                 )
-                if result.returncode == 0 and destination.exists():
-                    self._assert_jpeg(destination)
+                if result.returncode == 0 and staging.exists():
+                    self._assert_jpeg(staging)
+                    shutil.move(str(staging), str(destination))
                     return destination
                 last_error = RuntimeError(
                     f"gphoto2 returned {result.returncode}: {result.stderr.strip()}"
@@ -49,6 +60,8 @@ class GPhoto2Camera(CameraService):
                 )
             except OSError as e:
                 last_error = e
+
+            staging.unlink(missing_ok=True)
 
             if attempt < self._retries:
                 logger.warning(
