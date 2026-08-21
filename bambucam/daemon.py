@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 import signal
-import sys
 import threading
 from pathlib import Path
 
-from bambucam.camera.gphoto2 import GPhoto2Camera
+from bambucam.camera.base import CameraService
 from bambucam.compiler.ffmpeg import FfmpegCompiler
 from bambucam.config import BambuCamConfig, load_config
 from bambucam.logging import log_event, setup_logging
 from bambucam.orchestrator import Orchestrator
 from bambucam.printer.http import HttpPrinterProvider
-from bambucam.upload.appwrite import AppwriteUploader
+from bambucam.upload.base import Uploader
 
 DEFAULT_CONFIG_PATHS = [
     Path("config/config.yaml"),
@@ -26,7 +25,11 @@ def _find_config() -> Path | None:
     return None
 
 
-def _build_camera(config: BambuCamConfig) -> GPhoto2Camera:
+def _build_camera(config: BambuCamConfig) -> CameraService:
+    if config.camera.type == "mock":
+        from bambucam.camera.mock import MockCamera
+        return MockCamera()
+    from bambucam.camera.gphoto2 import GPhoto2Camera
     return GPhoto2Camera(
         timeout=config.camera.timeout_seconds,
         retries=config.camera.retries,
@@ -34,7 +37,11 @@ def _build_camera(config: BambuCamConfig) -> GPhoto2Camera:
     )
 
 
-def _build_uploader(config: BambuCamConfig) -> AppwriteUploader:
+def _build_uploader(config: BambuCamConfig) -> Uploader:
+    if config.upload.backend == "none":
+        from bambucam.upload.none import NoOpUploader
+        return NoOpUploader()
+    from bambucam.upload.appwrite import AppwriteUploader
     aw = config.upload.appwrite
     return AppwriteUploader(
         endpoint=aw.endpoint,

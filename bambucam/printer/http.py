@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Callable
 
@@ -13,10 +14,59 @@ logger = logging.getLogger("bambucam")
 
 PrintEventCallback = Callable[[str, PrintJob | None], None]
 
+# Bambuddy event names → our internal event names
+_BAMBUDDY_EVENT_MAP = {
+    "print_start": "print_started",
+    "print_complete": "print_completed",
+    "print_failed": "print_failed",
+    "print_stopped": "print_cancelled",
+}
+
+
+def _parse_bambuddy_payload(data: dict) -> tuple[str | None, PrintJob | None]:
+    """Parse a Bambuddy outbound webhook payload (generic format)."""
+    source = data.get("source", "")
+    event_raw = data.get("event", "")
+
+    if source != "Bambuddy" and event_raw not in _BAMBUDDY_EVENT_MAP:
+        return None, None
+
+    event = _BAMBUDDY_EVENT_MAP.get(event_raw)
+    if not event:
+        return None, None
+
+    printer_name = data.get("printer", "")
+    filename = data.get("filename", "unknown")
+    job_name = filename.replace(".gcode", "").replace(".3mf", "")
+    timestamp = data.get("timestamp", "")
+    job_id = f"{job_name}-{int(time.time())}" if event == "print_started" else ""
+
+    job = PrintJob(
+        job_id=job_id,
+        job_name=job_name,
+        printer_name=printer_name,
+    )
+    return event, job
+
+
+def _parse_native_payload(data: dict) -> tuple[str | None, PrintJob | None]:
+    """Parse our native BambuCam event payload."""
+    event = data.get("event")
+    if event not in ("print_started", "print_completed",
+                     "print_cancelled", "print_failed"):
+        return None, None
+
+    job = None
+    if event == "print_started":
+        job = PrintJob(
+            job_id=data.get("job_id", ""),
+            job_name=data.get("job_name", "unknown"),
+            printer_name=data.get("printer_name", ""),
+        )
+    return event, job
+
 
 class _RequestHandler(BaseHTTPRequestHandler):
-    provider: HttpPrinterProvider
-
     def do_POST(self) -> None:
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
@@ -24,43 +74,56 @@ class _RequestHandler(BaseHTTPRequestHandler):
         try:
             data = json.loads(body)
         except json.JSONDecodeError:
-            self.send_response(400)
-            self.end_headers()
-            self.wfile.write(b'{"error": "invalid JSON"}')
+            self._respond(400, {"error": "invalid JSON"})
             return
 
-        event_type = data.get("event")
-        if event_type not in ("print_started", "print_completed",
-                              "print_cancelled", "print_failed"):
-            self.send_response(400)
-            self.end_headers()
-            self.wfile.write(b'{"error": "unknown event type"}')
+        # Try Bambuddy format first, then native
+        event, job = _parse_bambuddy_payload(data)
+        if event is None:
+            event, job = _parse_native_payload(data)
+
+        if event is None:
+            self._respond(400, {"error": "unknown event format"})
             return
 
-        job = None
-        if event_type == "print_started":
-            job = PrintJob(
-                job_id=data.get("job_id", ""),
-                job_name=data.get("job_name", "unknown"),
-                printer_name=data.get("printer_name", ""),
-            )
-            self.server._provider._current_job = job
-            self.server._provider._printing = True
-        elif event_type in ("print_completed", "print_cancelled", "print_failed"):
-            job = self.server._provider._current_job
-            self.server._provider._printing = False
+        provider = self.server._provider
+
+        if event == "print_started" and job:
+            provider._current_job = job
+            provider._printing = True
+        elif event in ("print_completed", "print_cancelled", "print_failed"):
+            if job is None:
+                job = provider._current_job
+            provider._printing = False
 
         logger.info(
-            "Received event: %s", event_type,
-            extra={"event": event_type.upper(), "job_id": job.job_id if job else None},
+            "Received event: %s (job: %s)",
+            event, job.job_name if job else "unknown",
+            extra={"event": event.upper().replace("PRINT_", "PRINT_"),
+                   "job_id": job.job_id if job else None},
         )
 
-        if self.server._provider._event_callback:
-            self.server._provider._event_callback(event_type, job)
+        if provider._event_callback:
+            provider._event_callback(event, job)
 
-        self.send_response(200)
+        self._respond(200, {"status": "ok"})
+
+    def do_GET(self) -> None:
+        if self.path == "/health":
+            provider = self.server._provider
+            self._respond(200, {
+                "status": "ok",
+                "printing": provider._printing,
+                "current_job": provider._current_job.job_name if provider._current_job else None,
+            })
+        else:
+            self._respond(404, {"error": "not found"})
+
+    def _respond(self, code: int, body: dict) -> None:
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(b'{"status": "ok"}')
+        self.wfile.write(json.dumps(body).encode())
 
     def log_message(self, format: str, *args) -> None:
         pass
@@ -82,7 +145,8 @@ class HttpPrinterProvider(PrinterProvider):
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
         logger.info(
-            "HTTP printer provider listening on port %d", self._port,
+            "HTTP printer provider listening on port %d (accepts Bambuddy + native payloads)",
+            self._port,
             extra={"event": "PRINTER_PROVIDER_STARTED"},
         )
 

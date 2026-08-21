@@ -6,7 +6,7 @@
 trigger:
   type: gpio              # gpio | bluetooth | mqtt
   gpio_pin: 17
-  edge: rising            # rising | falling
+  edge: falling           # falling for contact-closure triggers (CyberBrick)
   debounce_ms: 200
 
 # Camera settings
@@ -52,6 +52,9 @@ logging:
   file: ./logs/bambucam.log
 
 # Printer event source
+# BambuCam listens for POST events on this port.
+# Bambuddy sends webhook notifications here on print start/complete/fail.
+# Also accepts native BambuCam payloads for custom integrations.
 printer:
   provider: http          # http | mqtt | mock
   http:
