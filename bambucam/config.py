@@ -15,6 +15,10 @@ class TriggerConfig:
     edge: str = "rising"
     debounce_ms: int = 200
     interval_seconds: float = 5.0
+    bambuddy_url: str = ""
+    bambuddy_printer_id: int = 0
+    bambuddy_api_key: str = ""
+    poll_interval_seconds: float = 1.0
 
 
 @dataclass

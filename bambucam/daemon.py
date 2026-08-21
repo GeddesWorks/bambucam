@@ -85,6 +85,15 @@ def main() -> None:
         from bambucam.trigger.mock import MockTriggerProvider
         trigger = MockTriggerProvider(interval_seconds=config.trigger.interval_seconds)
         trigger.start(callback=orchestrator.on_trigger)
+    elif config.trigger.type == "bambuddy":
+        from bambucam.trigger.bambuddy import BambuddyLayerTrigger
+        trigger = BambuddyLayerTrigger(
+            base_url=config.trigger.bambuddy_url,
+            printer_id=config.trigger.bambuddy_printer_id,
+            api_key=config.trigger.bambuddy_api_key,
+            poll_interval_seconds=config.trigger.poll_interval_seconds,
+        )
+        trigger.start(callback=orchestrator.on_trigger)
     elif config.trigger.type == "gpio":
         try:
             from bambucam.trigger.gpio import GpioTriggerProvider

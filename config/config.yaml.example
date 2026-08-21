@@ -4,11 +4,17 @@
 
 # Trigger source
 trigger:
-  type: gpio              # gpio | mock | bluetooth | mqtt
+  type: gpio              # gpio | bambuddy | mock | bluetooth | mqtt
   gpio_pin: 17
   edge: falling           # falling for contact-closure triggers (CyberBrick)
   debounce_ms: 200
   interval_seconds: 5     # mock trigger only: seconds between fake pulses
+  # bambuddy trigger only: fire on each new layer Bambuddy reports.
+  # No wiring, at the cost of up to poll_interval_seconds of jitter.
+  bambuddy_url: http://192.168.1.90:8000
+  bambuddy_printer_id: 1        # Jeff
+  bambuddy_api_key: ${BAMBUDDY_API_KEY}
+  poll_interval_seconds: 1.0
 
 # Camera settings
 camera:
