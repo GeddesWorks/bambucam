@@ -81,7 +81,11 @@ def main() -> None:
 
     # Trigger setup — GPIO only available on Pi
     trigger = None
-    if config.trigger.type == "gpio":
+    if config.trigger.type == "mock":
+        from bambucam.trigger.mock import MockTriggerProvider
+        trigger = MockTriggerProvider(interval_seconds=config.trigger.interval_seconds)
+        trigger.start(callback=orchestrator.on_trigger)
+    elif config.trigger.type == "gpio":
         try:
             from bambucam.trigger.gpio import GpioTriggerProvider
             trigger = GpioTriggerProvider(

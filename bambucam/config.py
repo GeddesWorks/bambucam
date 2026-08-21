@@ -14,6 +14,7 @@ class TriggerConfig:
     gpio_pin: int = 17
     edge: str = "rising"
     debounce_ms: int = 200
+    interval_seconds: float = 5.0
 
 
 @dataclass
