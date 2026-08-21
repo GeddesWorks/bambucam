@@ -85,3 +85,11 @@ def test_unmounted_share_fails_instead_of_writing_locally(tmp_path, video):
 def test_missing_source_file_is_reported_not_raised(uploader, tmp_path):
     result = uploader.upload(tmp_path / "gone.mp4", meta())
     assert result.success is False
+
+
+def test_mount_check_is_not_satisfied_by_root_alone(tmp_path, video):
+    """'/' is always a mount point; an ancestor-walk that accepts it would
+    pass everywhere and guard nothing."""
+    up = NasUploader(base_dir=str(tmp_path / "deep" / "nested" / "BambuCam"),
+                     mount_check=True)
+    assert up.upload(video, meta()).success is False

@@ -30,19 +30,25 @@ class NasUploader(Uploader):
         self._mount_check = mount_check
 
     def _assert_mounted(self) -> None:
-        """A missing share looks like an ordinary empty directory."""
+        """A missing share looks like an ordinary empty directory.
+
+        The archive path must sit under a real mount point other than root.
+        Checking "is any ancestor a mount point" is not enough — '/' always
+        is, so that check passes everywhere and protects nothing.
+        """
         if not self._mount_check:
             return
         probe = self._base if self._base.exists() else self._base.parent
-        if not os.path.ismount(probe):
-            # Walk up: base_dir is usually a subdirectory of the mount point.
-            for parent in probe.parents:
-                if os.path.ismount(parent):
-                    return
-            raise RuntimeError(
-                f"{self._base} is not on a mounted filesystem — "
-                "the network share is not mounted"
-            )
+        root = Path(probe.anchor or "/")
+        for candidate in (probe, *probe.parents):
+            if candidate == root:
+                break
+            if os.path.ismount(candidate):
+                return
+        raise RuntimeError(
+            f"{self._base} is not under a mounted network share — "
+            "refusing to write (this would fill the local disk instead)"
+        )
 
     @staticmethod
     def _job_datetime(metadata: dict, file_path: Path) -> datetime:
