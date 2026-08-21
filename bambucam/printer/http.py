@@ -83,6 +83,12 @@ class _RequestHandler(BaseHTTPRequestHandler):
             event, job = _parse_native_payload(data)
 
         if event is None:
+            # Bambuddy sends test notifications and non-print events (printer
+            # offline, AMS humidity, ...) through the same webhook. Those are
+            # not errors — acknowledge them so the provider stays healthy.
+            if data.get("source") == "Bambuddy":
+                self._respond(200, {"status": "ignored"})
+                return
             self._respond(400, {"error": "unknown event format"})
             return
 

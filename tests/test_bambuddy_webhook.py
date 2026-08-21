@@ -1,4 +1,13 @@
-from bambucam.printer.http import _parse_bambuddy_payload, _parse_native_payload
+import http.client
+import json
+
+import pytest
+
+from bambucam.printer.http import (
+    HttpPrinterProvider,
+    _parse_bambuddy_payload,
+    _parse_native_payload,
+)
 
 
 def test_bambuddy_print_start():
@@ -101,3 +110,52 @@ def test_3mf_extension_stripped():
     }
     event, job = _parse_bambuddy_payload(payload)
     assert job.job_name == "cool-model"
+
+
+def _post(port, payload):
+    body = json.dumps(payload).encode()
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    conn.request("POST", "/", body, {"Content-Type": "application/json"})
+    response = conn.getresponse()
+    status, data = response.status, json.loads(response.read())
+    conn.close()
+    return status, data
+
+
+@pytest.fixture
+def provider():
+    p = HttpPrinterProvider(port=0)
+    p.start(callback=lambda event, job: None)
+    try:
+        yield p, p._server.server_address[1]
+    finally:
+        p.stop()
+
+
+def test_test_notification_is_acknowledged(provider):
+    """Bambuddy's 'Test' button sends an event-less payload. Answering 200
+    keeps the provider from being marked failed in Bambuddy's UI."""
+    p, port = provider
+    status, data = _post(port, {
+        "title": "Bambuddy Test",
+        "message": "This is a test notification.",
+        "timestamp": "2026-08-20T19:49:22",
+        "source": "Bambuddy",
+    })
+    assert status == 200
+    assert data == {"status": "ignored"}
+    assert p.is_printing() is False
+
+
+def test_non_print_bambuddy_event_is_acknowledged(provider):
+    _, port = provider
+    status, data = _post(port, {"source": "Bambuddy", "event": "printer_offline",
+                                "printer": "Jeff"})
+    assert status == 200
+    assert data == {"status": "ignored"}
+
+
+def test_unrecognised_payload_still_rejected(provider):
+    _, port = provider
+    status, _data = _post(port, {"hello": "world"})
+    assert status == 400
