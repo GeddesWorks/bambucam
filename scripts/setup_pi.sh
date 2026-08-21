@@ -52,6 +52,18 @@ python3 -m venv "$INSTALL_DIR/venv"
 "$INSTALL_DIR/venv/bin/pip" install --upgrade pip -q
 "$INSTALL_DIR/venv/bin/pip" install -e ".[dev]" -q
 
+# GPIO library for the CyberBrick trigger. rpi-lgpio is the drop-in
+# RPi.GPIO replacement that works on current Raspberry Pi OS (Bookworm and
+# later); fall back to legacy RPi.GPIO on older images. Without one of these
+# the daemon starts but logs TRIGGER_UNAVAILABLE and captures nothing.
+echo "  Installing GPIO library..."
+if ! "$INSTALL_DIR/venv/bin/pip" install rpi-lgpio -q 2>/dev/null; then
+    if ! "$INSTALL_DIR/venv/bin/pip" install RPi.GPIO -q 2>/dev/null; then
+        echo "  WARNING: no GPIO library installed — the GPIO trigger will not work."
+        echo "           Install rpi-lgpio or RPi.GPIO manually before wiring the trigger."
+    fi
+fi
+
 # Create runtime directories
 echo "[5/7] Creating runtime directories..."
 mkdir -p "$INSTALL_DIR/prints"
