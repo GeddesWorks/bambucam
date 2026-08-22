@@ -36,10 +36,33 @@ class CaptureConfig:
 
 
 @dataclass
+class BambuddyConfig:
+    url: str = ""
+    api_key: str = ""
+    # Name videos after the model rather than the slicer-settings filename.
+    use_print_name: bool = True
+
+
+@dataclass
 class CompileConfig:
     fps: int = 30
     codec: str = "libx264"
     pixel_format: str = "yuv420p"
+    # When set, frame rate is derived so the video lands near this length
+    # regardless of how many layers the print had. Without it a tall print
+    # produces a proportionally long video: 900 layers at 6 fps is 2.5 minutes.
+    target_duration_seconds: float = 0.0
+    min_fps: int = 6
+    max_fps: int = 60
+
+    def fps_for(self, frame_count: int) -> int:
+        """Frame rate to use for a job with *frame_count* frames."""
+        if self.target_duration_seconds <= 0:
+            return self.fps
+        if frame_count <= 0:
+            return max(self.min_fps, 1)
+        ideal = frame_count / self.target_duration_seconds
+        return max(self.min_fps, min(self.max_fps, round(ideal)))
 
 
 @dataclass
@@ -103,6 +126,7 @@ class BambuCamConfig:
     cleanup: CleanupConfig = field(default_factory=CleanupConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     printer: PrinterConfig = field(default_factory=PrinterConfig)
+    bambuddy: BambuddyConfig = field(default_factory=BambuddyConfig)
 
 
 _ENV_PATTERN = re.compile(r"\$\{(\w+)}")
@@ -131,6 +155,7 @@ def _resolve_env_vars(obj: object) -> object:
 _NESTED_TYPES: dict[str, type] = {
     "appwrite": AppwriteConfig,
     "nas": NasConfig,
+    "bambuddy": BambuddyConfig,
     "http": PrinterHttpConfig,
 }
 

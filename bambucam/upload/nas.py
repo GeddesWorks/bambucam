@@ -7,7 +7,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from bambucam.models import UploadResult
+from bambucam.models import UploadResult, slugify_job_name
 from bambucam.upload.base import Uploader
 
 logger = logging.getLogger("bambucam")
@@ -60,8 +60,13 @@ class NasUploader(Uploader):
 
     def _destination(self, file_path: Path, metadata: dict) -> Path:
         when = self._job_datetime(metadata, file_path)
-        slug = metadata.get("job_id", "print")
-        slug = _JOB_TIMESTAMP.sub("", slug) or "print"
+        # The model name beats the filename, which Bambu Studio derives from
+        # slicer settings ("0.2mm layer, 2 walls, 15% infill") unless renamed.
+        print_name = (metadata.get("print_name") or "").strip()
+        if print_name:
+            slug = slugify_job_name(print_name)
+        else:
+            slug = _JOB_TIMESTAMP.sub("", metadata.get("job_id", "print")) or "print"
         name = f"{when:%Y-%m-%d_%H%M}_{slug}{file_path.suffix}"
 
         target_dir = self._base / f"{when:%Y}"

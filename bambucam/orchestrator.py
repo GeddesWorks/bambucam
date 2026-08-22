@@ -221,10 +221,12 @@ class Orchestrator:
             self._do_cleanup()
             return
 
+        fps = self._config.compile.fps_for(self._frame_count)
+        self._meta.video_fps = fps
         success = self._compiler.compile(
             self._job_dir.frames_dir,
             self._job_dir.video_path,
-            fps=self._config.compile.fps,
+            fps=fps,
         )
 
         if success:
@@ -234,6 +236,19 @@ class Orchestrator:
         else:
             self._sm.transition_to(State.ERROR_COMPILE)
             self._save_meta()
+
+    def _lookup_print_name(self) -> str | None:
+        """The model's real name, if Bambuddy knows it. Best effort only."""
+        cfg = getattr(self._config, "bambuddy", None)
+        if not cfg or not cfg.use_print_name or not cfg.url:
+            return None
+        try:
+            from bambucam.printer.bambuddy_names import fetch_print_name
+            return fetch_print_name(cfg.url, cfg.api_key, self._meta.job_name)
+        except Exception as e:  # naming must never break an upload
+            logger.warning("Print name lookup failed: %s", e,
+                           extra={"event": "PRINT_NAME_LOOKUP_FAILED"})
+            return None
 
     def _do_upload(self) -> None:
         if not self._job_dir.video_path.exists():
@@ -251,6 +266,7 @@ class Orchestrator:
                 self._job_dir.video_path,
                 metadata={"job_id": self._meta.job_id,
                            "job_name": self._meta.job_name,
+                           "print_name": self._lookup_print_name(),
                            "frame_count": self._meta.frame_count},
             )
             if result.success:
