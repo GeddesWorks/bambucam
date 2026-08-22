@@ -296,6 +296,43 @@ Do not "correct" a bright early frame — the number falls on its own as the
 print grows, and correcting makes every later frame too dark. Measure the crop,
 then look at the image before changing anything.
 
+## Video naming and length
+
+Videos are named after the **model**, not the file: Bambu Studio names a
+project after its slicer settings unless you rename it, which is why early
+archives are called `0.2mm-layer-2-walls-15-infill`. Bambuddy's archive record
+carries the real name in `print_name`, looked up at upload time by matching the
+job name against the record's `filename`:
+
+```
+BambuCam/2026/2026-08-22_1739_Fidget-Slider-relaxation-in-your-hand.mp4
+```
+
+Best effort only — Bambuddy being down, a missing key, or no matching record
+all fall back to the job slug rather than failing the upload. Needs
+`BAMBUDDY_API_KEY` in `.env` and a `bambuddy:` section in config.
+
+Frame rate adapts so video length does not scale with print height:
+
+```yaml
+compile:
+  target_duration_seconds: 20   # 0 disables, keeping fixed fps
+  min_fps: 6
+  max_fps: 60
+```
+
+Measured: 40 frames -> 6 fps (6.7s, floored by min_fps), 243 -> 12 fps (20s),
+900 -> 45 fps (20s), 2000 -> 60 fps (33s, capped). Without it, 900 layers at a
+fixed 6 fps would be a two-and-a-half minute video.
+
+**Adding a config section means editing two registries.** `_NESTED_TYPES`
+turns a nested dict into a dataclass, and `_dict_to_config`'s `section_map`
+decides whether a top-level section is read at all. Missing from the first, the
+daemon crashes at startup; missing from the second, the section is silently
+discarded and the feature never sees its settings — which is exactly how
+`bambuddy.url` stayed empty while the YAML plainly set it. Both are covered by
+`tests/test_config_nested.py` now.
+
 ## Notes
 
 - Video compilation on the Pi 3B will be slow (~5-10 min for 200 frames).
