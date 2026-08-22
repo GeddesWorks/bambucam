@@ -101,15 +101,29 @@ def test_mount_check_uses_the_configured_mount_point(tmp_path, video):
     assert inferred_would_pass in (True, False)  # depends on host /tmp
 
 
-def test_verify_without_upload_id_must_not_trigger_cleanup():
+def test_verify_without_upload_id_errors_instead_of_cleaning_up():
     """A crash between upload success and the metadata write leaves VERIFYING
     with no file id. Cleaning up there deletes frames that were never
-    archived, so it must error out and let recovery retry the upload."""
-    import inspect
+    archived, so it must error out and let recovery retry the upload.
+
+    Asserts on behaviour, not on the source text: a source scan still passes
+    when the logic around it changes.
+    """
+    from unittest.mock import MagicMock
 
     from bambucam.orchestrator import Orchestrator
+    from bambucam.state_machine import State
 
-    src = inspect.getsource(Orchestrator._do_verify)
-    head = src.split("if self._uploader.verify")[0]
-    assert "ERROR_UPLOAD" in head, "missing file id must route to ERROR_UPLOAD"
-    assert "_do_cleanup()" not in head, "must not clean up without a verified upload"
+    o = Orchestrator.__new__(Orchestrator)
+    o._meta = MagicMock(upload_file_id=None, job_id="job")
+    o._sm = MagicMock()
+    o._uploader = MagicMock()
+    o._save_meta = lambda: None
+    cleaned = []
+    o._do_cleanup = lambda: cleaned.append(True)
+
+    Orchestrator._do_verify(o)
+
+    assert cleaned == [], "must not clean up without a verified upload"
+    o._sm.transition_to.assert_called_once_with(State.ERROR_UPLOAD)
+    o._uploader.verify.assert_not_called()
