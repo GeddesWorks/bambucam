@@ -185,6 +185,7 @@ def _dict_to_config(data: dict) -> BambuCamConfig:
         "cleanup": CleanupConfig,
         "logging": LoggingConfig,
         "printer": PrinterConfig,
+        "bambuddy": BambuddyConfig,
     }
     for section, cls in section_map.items():
         if section in data:

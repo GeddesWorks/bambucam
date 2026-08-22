@@ -55,3 +55,34 @@ def test_nas_section_builds_a_dataclass_not_a_dict():
     })
     assert cfg.nas.dir == "/mnt/nas/BambuCam"
     assert cfg.nas.mount_point == "/mnt/nas"
+
+
+def test_every_top_level_section_is_loadable():
+    """_dict_to_config has its own hardcoded section_map. A section missing
+    from it is silently discarded — the config parses, the daemon starts, and
+    the feature just never sees its settings. That is how bambuddy.url stayed
+    empty while the YAML plainly set it."""
+    import dataclasses
+
+    from bambucam.config import BambuCamConfig, _dict_to_config
+
+    for f in dataclasses.fields(BambuCamConfig):
+        target = f.default_factory() if f.default_factory is not dataclasses.MISSING else None
+        if not dataclasses.is_dataclass(target):
+            continue
+        probe = {f.name: {}}
+        loaded = _dict_to_config(probe)
+        assert dataclasses.is_dataclass(getattr(loaded, f.name)), (
+            f"section {f.name!r} is not in _dict_to_config's section_map"
+        )
+
+
+def test_bambuddy_url_survives_config_loading():
+    """The exact regression: the section was dropped, so the lookup silently
+    short-circuited on an empty URL and every video kept the slicer filename."""
+    from bambucam.config import _dict_to_config
+
+    cfg = _dict_to_config({"bambuddy": {"url": "http://bambuddy:8000",
+                                        "api_key": "k", "use_print_name": True}})
+    assert cfg.bambuddy.url == "http://bambuddy:8000"
+    assert cfg.bambuddy.api_key == "k"
