@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -29,7 +30,22 @@ def _records(payload) -> list[dict]:
     return []
 
 
+def _record_time(record: dict) -> datetime | None:
+    for key in ("created_at", "last_run_at", "completed_at"):
+        raw = record.get(key)
+        if not isinstance(raw, str) or not raw:
+            continue
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        # Bambuddy writes these without an offset; they are UTC.
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    return None
+
+
 def fetch_print_name(base_url: str, api_key: str, job_name: str,
+                     started_at: datetime | None = None,
                      timeout: float = 8.0, limit: int = 20,
                      fetch: Callable | None = None) -> str | None:
     """The model's real name for a print, or None.
@@ -38,6 +54,12 @@ def fetch_print_name(base_url: str, api_key: str, job_name: str,
     it, so the filename is usually something like "0.2mm layer, 2 walls, 15%
     infill". Bambuddy's archive record carries the actual model name in
     `print_name` (e.g. "Fidget Slider"), which makes a far better video name.
+
+    Bambu Studio reuses that settings-derived filename across completely
+    different models, so several archive records commonly share it. Pass
+    *started_at* to pick the record closest in time to this print; without it
+    the newest match wins, which is right for a print happening now and wrong
+    for anything retroactive.
 
     Never raises: a naming nicety must not fail an upload, so every problem
     returns None and the caller falls back to the job slug.
@@ -58,6 +80,7 @@ def fetch_print_name(base_url: str, api_key: str, job_name: str,
 
     wanted = job_name.strip().lower()
     wanted_slug = slugify_job_name(job_name).lower()
+    matches = []
     for record in records:
         filename = str(record.get("filename") or "")
         stem = filename.rsplit(".", 1)[0].strip()
@@ -70,9 +93,20 @@ def fetch_print_name(base_url: str, api_key: str, job_name: str,
             continue
         name = record.get("print_name")
         if isinstance(name, str) and name.strip():
-            return name.strip()
+            matches.append((record, name.strip()))
+
+    if not matches:
+        logger.debug("No archive record matched job %r", job_name,
+                     extra={"event": "PRINT_NAME_NOT_FOUND"})
         return None
 
-    logger.debug("No archive record matched job %r", job_name,
-                 extra={"event": "PRINT_NAME_NOT_FOUND"})
-    return None
+    if started_at is not None and len(matches) > 1:
+        reference = started_at if started_at.tzinfo else started_at.replace(
+            tzinfo=timezone.utc)
+        dated = [(r, n) for r, n in matches if _record_time(r) is not None]
+        if dated:
+            record, name = min(
+                dated, key=lambda rn: abs(_record_time(rn[0]) - reference))
+            return name
+
+    return matches[0][1]

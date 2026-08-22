@@ -243,8 +243,17 @@ class Orchestrator:
         if not cfg or not cfg.use_print_name or not cfg.url:
             return None
         try:
+            from datetime import datetime
+
             from bambucam.printer.bambuddy_names import fetch_print_name
-            return fetch_print_name(cfg.url, cfg.api_key, self._meta.job_name)
+            started = None
+            if self._meta.started_at:
+                try:
+                    started = datetime.fromisoformat(self._meta.started_at)
+                except ValueError:
+                    started = None
+            return fetch_print_name(cfg.url, cfg.api_key, self._meta.job_name,
+                                    started_at=started)
         except Exception as e:  # naming must never break an upload
             logger.warning("Print name lookup failed: %s", e,
                            extra={"event": "PRINT_NAME_LOOKUP_FAILED"})

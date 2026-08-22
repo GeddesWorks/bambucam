@@ -99,3 +99,57 @@ def test_slug_matching_does_not_collapse_distinct_prints():
             {"filename": "gadget v2.3mf", "print_name": "Gadget Two"}]
     assert fetch_print_name("http://b:8000", "k", "gadget-v2",
                             fetch=fetcher(recs)) == "Gadget Two"
+
+
+DUPES = [
+    {"filename": "0.2mm layer, 2 walls, 15% infill.3mf",
+     "print_name": "The Rocket", "created_at": "2026-08-22T22:46:00"},
+    {"filename": "0.2mm layer, 2 walls, 15% infill.3mf",
+     "print_name": "Rock Fish", "created_at": "2026-08-22T22:41:01"},
+    {"filename": "0.2mm layer, 2 walls, 15% infill.3mf",
+     "print_name": "Ratchet Strap Organizer", "created_at": "2026-08-21T15:58:09"},
+]
+
+
+def test_picks_the_record_closest_to_the_print_start():
+    """Bambu Studio reuses one settings-derived filename across different
+    models, so the filename alone identifies the wrong print."""
+    from datetime import datetime, timezone
+
+    started = datetime(2026, 8, 21, 16, 10, tzinfo=timezone.utc)
+    assert fetch_print_name("http://b", "k", "0.2mm layer, 2 walls, 15% infill",
+                            started_at=started,
+                            fetch=fetcher(DUPES)) == "Ratchet Strap Organizer"
+
+
+def test_distinguishes_two_prints_minutes_apart():
+    from datetime import datetime, timezone
+
+    started = datetime(2026, 8, 22, 22, 41, 30, tzinfo=timezone.utc)
+    assert fetch_print_name("http://b", "k", "0.2mm layer, 2 walls, 15% infill",
+                            started_at=started,
+                            fetch=fetcher(DUPES)) == "Rock Fish"
+
+
+def test_naive_start_time_is_treated_as_utc():
+    from datetime import datetime
+
+    started = datetime(2026, 8, 21, 16, 10)
+    assert fetch_print_name("http://b", "k", "0.2mm layer, 2 walls, 15% infill",
+                            started_at=started,
+                            fetch=fetcher(DUPES)) == "Ratchet Strap Organizer"
+
+
+def test_without_a_start_time_the_first_match_is_used():
+    assert fetch_print_name("http://b", "k", "0.2mm layer, 2 walls, 15% infill",
+                            fetch=fetcher(DUPES)) == "The Rocket"
+
+
+def test_records_without_timestamps_do_not_break_disambiguation():
+    recs = [{"filename": "x.3mf", "print_name": "No Date"},
+            {"filename": "x.3mf", "print_name": "Dated",
+             "created_at": "2026-08-21T15:58:09"}]
+    from datetime import datetime, timezone
+    started = datetime(2026, 8, 21, 16, 0, tzinfo=timezone.utc)
+    assert fetch_print_name("http://b", "k", "x", started_at=started,
+                            fetch=fetcher(recs)) == "Dated"
