@@ -110,6 +110,24 @@ class Orchestrator:
                 self._sm.force_state(resume)
                 self._run_pipeline_from(resume)
 
+            # _run_pipeline_from runs in a thread, and every job shares
+            # self._meta / self._job_dir. Starting the next job before this one
+            # finishes overwrites that state mid-flight: the finishing job's
+            # cleanup sets _meta to None and the next thread dies on
+            # 'NoneType' object has no attribute 'job_id', leaving the state
+            # machine wedged so later prints are refused as "not idle".
+            self._await_pipeline()
+
+    def _await_pipeline(self, timeout: float = 3600.0) -> None:
+        """Block until the running pipeline thread finishes, if any."""
+        thread = self._pipeline_thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=timeout)
+            if thread.is_alive():
+                logger.warning(
+                    "Pipeline still running after %ss; continuing", timeout,
+                    extra={"event": "PIPELINE_SLOW"})
+
     def _start_job(self, job: PrintJob) -> None:
         if not self._sm.is_idle:
             logger.warning("Ignoring print_started — not idle (state=%s)",
