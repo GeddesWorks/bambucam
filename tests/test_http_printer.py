@@ -1,4 +1,4 @@
-
+import pytest
 
 def test_health_clears_current_job_when_the_print_finishes(free_port):
     """An idle daemon reporting a finished print as current_job makes /health
