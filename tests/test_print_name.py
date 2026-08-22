@@ -82,3 +82,20 @@ def test_blank_print_name_falls_back_too(tmp_path):
     r = _upload(tmp_path, {"job_id": "benchy-1787434493", "job_name": "benchy",
                            "print_name": "  "})
     assert Path(r.file_id).name.endswith("_benchy.mp4")
+
+
+def test_matches_when_the_job_name_arrives_already_slugified():
+    """Punctuation survives differently on either side: "0.2mm layer, 2 walls,
+    15% infill" and "0.2mm-layer-2-walls-15-infill" are the same print."""
+    recs = [{"filename": "0.2mm layer, 2 walls, 15% infill.3mf",
+             "print_name": "Ratchet Strap Organizer"}]
+    assert fetch_print_name("http://b:8000", "k",
+                            "0.2mm-layer-2-walls-15-infill",
+                            fetch=fetcher(recs)) == "Ratchet Strap Organizer"
+
+
+def test_slug_matching_does_not_collapse_distinct_prints():
+    recs = [{"filename": "gadget v1.3mf", "print_name": "Gadget One"},
+            {"filename": "gadget v2.3mf", "print_name": "Gadget Two"}]
+    assert fetch_print_name("http://b:8000", "k", "gadget-v2",
+                            fetch=fetcher(recs)) == "Gadget Two"

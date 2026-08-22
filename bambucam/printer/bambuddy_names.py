@@ -54,11 +54,19 @@ def fetch_print_name(base_url: str, api_key: str, job_name: str,
                        extra={"event": "PRINT_NAME_LOOKUP_FAILED"})
         return None
 
+    from bambucam.models import slugify_job_name
+
     wanted = job_name.strip().lower()
+    wanted_slug = slugify_job_name(job_name).lower()
     for record in records:
         filename = str(record.get("filename") or "")
-        stem = filename.rsplit(".", 1)[0].strip().lower()
-        if stem != wanted and filename.strip().lower() != wanted:
+        stem = filename.rsplit(".", 1)[0].strip()
+        # Compare slugs as well as raw text: punctuation survives differently
+        # on either side ("15% infill" vs "15-infill"), so exact matching alone
+        # misses records that are plainly the same print.
+        if (stem.lower() != wanted
+                and filename.strip().lower() != wanted
+                and slugify_job_name(stem).lower() != wanted_slug):
             continue
         name = record.get("print_name")
         if isinstance(name, str) and name.strip():
