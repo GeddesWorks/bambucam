@@ -13,7 +13,8 @@ Branch: `claude/new-project-spec-023uvp` · Repo: `GeddesWorks/bambucam` (public
 | CyberBrick trigger wired | Done — pin 17, verified firing the camera |
 | Full chain dry run | Done — 8 presses, 8 frames, compiled to MP4 |
 | Nikon D40 capture | Done — 2.4s per frame |
-| First real print | Partial — 13 frames, camera battery died |
+| First real print | Partial — camera battery died at frame 13 |
+| Fully unattended run | **Done** — 40 layers, 40 frames, 0 failures, auto-archived |
 | Archive to NAS | Done — verified end to end |
 
 ## The Pi
@@ -265,6 +266,35 @@ sections must be registered in `_NESTED_TYPES` in `bambucam/config.py` or they
 load as plain dicts. Unit tests that construct a backend directly never catch
 this — `tests/test_config_nested.py` now walks every nested dataclass field and
 fails if one is unregistered.
+
+## The unattended run that worked
+
+2026-08-22, 40 layers: 40 frames captured (one per layer, no gaps, no
+retries), compiled, archived to
+`BambuCam/2026/2026-08-22_1634_0.2mm-layer-2-walls-7-infill.mp4`, verified,
+and the frames cleaned off the Pi — with no intervention.
+
+Camera settings for that run, with a `G4 P1000` layer-change dwell:
+
+```
+shutterspeed 1/60   f/3.5   iso 800   expprogram M
+```
+
+Sharp at 1/60 with the dwell in place. With `G4 P2000` the next step is
+**1/30 at ISO 400**, two stops less noise, which matters a lot on a D40.
+
+**Timelapse mode must be enabled in the slicer.** Without it the printer never
+parks, the CyberBrick never fires, and you get a completed print with zero
+frames — daemon healthy, log clean, nothing captured. A whole print was lost to
+this. The symptom is identical to a wiring fault, so check the slicer setting
+before touching the wiring; `scripts/probe_gpio.py` with the daemon stopped
+shows no edges in either case.
+
+**Plate luminance depends on what is on the plate.** An empty plate meters near
+155 while a plate carrying dark parts meters near 115, at identical exposure.
+Do not "correct" a bright early frame — the number falls on its own as the
+print grows, and correcting makes every later frame too dark. Measure the crop,
+then look at the image before changing anything.
 
 ## Notes
 
