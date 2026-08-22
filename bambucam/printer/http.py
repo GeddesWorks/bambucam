@@ -101,6 +101,9 @@ class _RequestHandler(BaseHTTPRequestHandler):
             if job is None:
                 job = provider._current_job
             provider._printing = False
+            # Clear after the fallback above has used it, so /health does not
+            # keep reporting a finished print as the current job.
+            provider._current_job = None
 
         logger.info(
             "Received event: %s (job: %s)",
