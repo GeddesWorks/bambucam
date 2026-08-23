@@ -181,7 +181,31 @@ are trustworthy.
 Working settings, verified sharp and correctly exposed on the A1:
 
 ```
-shutterspeed 1/125   f/3.5 (wide open)   iso 1600   expprogram M
+shutterspeed 1/8   f/8   iso 400   expprogram M
+```
+
+**Do not shoot wide open.** f/3.5 was chosen to scrape light out of a dark
+room and it cost real sharpness: the scene spans depth (near plate edge to far
+edge, plus the print growing toward the camera) and at f/3.5 only a thin slice
+is in focus. Measured on the same scene at matched brightness, edge energy more
+than doubled going to f/8:
+
+| Aperture | Edge energy |
+|---|---|
+| f/3.5 | 1.56 |
+| f/8   | 3.33 |
+
+With a 2s dwell there is room to pay for it with shutter speed instead of
+aperture or ISO. 1/8s is 125ms; the shutter fires 0-1s after the trigger, so
+the exposure ends by ~1.1s, comfortably inside the dwell.
+
+**The viewfinder cannot be trusted for focus.** The D40's pentamirror finder is
+small and dim; softness that is obvious at 100% in a 6MP file is invisible in
+it. Judge focus from a captured frame cropped 1:1, never from the viewfinder.
+A useful sharpness proxy without eyeballing:
+
+```bash
+ffprobe -v error -f lavfi "movie=FRAME.jpg,format=gray,convolution=0 -1 0 -1 4 -1 0 -1 0,signalstats"   -show_entries frame_tags=lavfi.signalstats.YAVG -of csv=p=0
 ```
 
 **Shoot no slower than 1/125.** The A1 is a bed-slinger, and the bed is still
