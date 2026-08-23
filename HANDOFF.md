@@ -14,7 +14,7 @@ Branch: `claude/new-project-spec-023uvp` · Repo: `GeddesWorks/bambucam` (public
 | Full chain dry run | Done — 8 presses, 8 frames, compiled to MP4 |
 | Nikon D40 capture | Done — 2.4s per frame |
 | First real print | Partial — camera battery died at frame 13 |
-| Fully unattended run | **Done** — 40 layers, 40 frames, 0 failures, auto-archived |
+| Fully unattended run | **Done** — 40 layers, then 401 layers, 0 dropped frames |
 | Archive to NAS | Done — verified end to end |
 
 ## The Pi
@@ -332,6 +332,36 @@ daemon crashes at startup; missing from the second, the section is silently
 discarded and the feature never sees its settings — which is exactly how
 `bambuddy.url` stayed empty while the YAML plainly set it. Both are covered by
 `tests/test_config_nested.py` now.
+
+## Encoding must stay inside 905MB
+
+The Pi 3B has 905MB and **no swap**. x264 buffers `rc_lookahead` raw frames,
+and a 3008x2000 frame is ~9MB, so a full-resolution encode of a long print
+climbs to 2.2GB virtual and is killed:
+
+```
+enc0:0:libx264 invoked oom-killer
+Out of memory: Killed process (ffmpeg) total-vm:2242144kB
+```
+
+A 401-frame print died this way after 57s with all 401 frames sitting fine on
+disk. **Short prints hid it** — 13 and 40 frames never keep the lookahead full,
+so every earlier compile succeeded and the ceiling went unnoticed until a real
+print hit it.
+
+Defaults now scale to 1920 wide, cap `rc-lookahead` at 10, disable
+`sync-lookahead`, and limit threads to 2. Measured on the failed job: **147s
+instead of a projected ~19 min**, because scaling cuts the work as well as the
+memory. `scale_width: 0` restores native resolution if you ever move encoding
+to a bigger machine.
+
+The failed job recovered cleanly: it sat in `ERROR_COMPILE`, and a restart
+resumed it, compiled, archived, verified, and cleaned up without losing a frame.
+
+**Beware stale log matches when checking status.** Twice a watcher grepping the
+last matching line reported an old failure as current — once blaming the camera
+when the fault was elsewhere, once declaring a running compile dead. Filter on
+the timestamp or watch a monotonic signal (the NAS file count) instead.
 
 ## Notes
 
