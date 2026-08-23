@@ -62,6 +62,10 @@ def _build_compiler(config: BambuCamConfig) -> FfmpegCompiler:
     return FfmpegCompiler(
         codec=config.compile.codec,
         pixel_format=config.compile.pixel_format,
+        scale_width=config.compile.scale_width,
+        preset=config.compile.preset,
+        threads=config.compile.threads,
+        rc_lookahead=config.compile.rc_lookahead,
     )
 
 

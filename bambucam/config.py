@@ -54,6 +54,14 @@ class CompileConfig:
     target_duration_seconds: float = 0.0
     min_fps: int = 6
     max_fps: int = 60
+    # The Pi 3B has 905MB and no swap. x264 buffers rc_lookahead frames of
+    # raw video, and a 3008x2000 frame is ~9MB, so full-resolution encoding
+    # of a long print gets OOM-killed partway through. Scaling down and
+    # trimming the lookahead keeps it well inside memory and is ~8x faster.
+    scale_width: int = 1920      # 0 keeps the camera's native resolution
+    preset: str = "veryfast"
+    threads: int = 2
+    rc_lookahead: int = 10
 
     def fps_for(self, frame_count: int) -> int:
         """Frame rate to use for a job with *frame_count* frames."""
