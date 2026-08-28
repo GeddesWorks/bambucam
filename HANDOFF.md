@@ -253,8 +253,24 @@ Finished videos are archived to the `media` share on **192.168.1.54**, which
 allows **anonymous/guest** access, so there are no credentials anywhere.
 
 ```
-//192.168.1.54/media /mnt/nas cifs guest,uid=1000,gid=1000,vers=3.0,file_mode=0664,dir_mode=0775,_netdev,nofail 0 0
+//192.168.1.54/media /mnt/nas cifs guest,uid=1000,gid=1000,vers=3.0,file_mode=0664,dir_mode=0775,_netdev,nofail,x-systemd.automount,x-systemd.idle-timeout=600 0 0
 ```
+
+**`x-systemd.automount` is load-bearing, not decoration.** A plain cifs mount
+that drops never comes back on its own. It happened: the share went away with
+no reboot, a 509-frame print captured and compiled fine, then failed to upload
+three times and sat in `ERROR_UPLOAD` until someone noticed the video was
+missing a day later. With automount, the next access re-mounts the share —
+verified by unmounting and watching a directory listing bring it back.
+
+Nothing was lost, because the guard refused to write to an unmounted path
+rather than filling the SD card with a file nobody would find, and a daemon
+restart recovered the job straight through upload, verify and cleanup.
+
+Automount changes what the guard must check: the mount point always satisfies
+`os.path.ismount` once autofs is in place, even with the NAS unreachable. The
+uploader now touches the path first (triggering the mount) and then requires a
+real filesystem in `/proc/self/mounts`, rejecting the autofs stub.
 
 That line is in `/etc/fstab`; `_netdev,nofail` means a NAS outage delays nothing
 at boot. Requires `cifs-utils` (and `smbclient` for listing shares).
