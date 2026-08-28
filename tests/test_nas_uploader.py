@@ -127,3 +127,60 @@ def test_verify_without_upload_id_errors_instead_of_cleaning_up():
     assert cleaned == [], "must not clean up without a verified upload"
     o._sm.transition_to.assert_called_once_with(State.ERROR_UPLOAD)
     o._uploader.verify.assert_not_called()
+
+
+def test_autofs_stub_is_not_accepted_as_a_mounted_share(tmp_path, monkeypatch):
+    """Under x-systemd.automount the mount point always looks mounted to
+    os.path.ismount, even with the NAS unreachable. Only a real filesystem
+    counts, or the guard silently stops guarding."""
+    mount = tmp_path / "nas"
+    mount.mkdir()
+    up = NasUploader(base_dir=str(mount / "BambuCam"),
+                     mount_point=str(mount), mount_check=True)
+
+    monkeypatch.setattr(NasUploader, "_is_real_mount", staticmethod(lambda p: False))
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"x" * 40)
+    result = up.upload(video, {"job_id": "j-1787000001", "job_name": "j"})
+    assert result.success is False
+
+
+def test_real_filesystem_at_the_mount_point_is_accepted(tmp_path, monkeypatch):
+    mount = tmp_path / "nas"
+    (mount / "BambuCam").mkdir(parents=True)
+    up = NasUploader(base_dir=str(mount / "BambuCam"),
+                     mount_point=str(mount), mount_check=True)
+
+    monkeypatch.setattr(NasUploader, "_is_real_mount", staticmethod(lambda p: True))
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"x" * 40)
+    assert up.upload(video, {"job_id": "j-1787000001", "job_name": "j"}).success
+
+
+def test_unreachable_mount_point_is_reported_not_raised(tmp_path):
+    """An unreachable share must fail the upload, not crash the pipeline."""
+    up = NasUploader(base_dir=str(tmp_path / "gone" / "BambuCam"),
+                     mount_point=str(tmp_path / "gone"), mount_check=True)
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"x" * 40)
+    assert up.upload(video, {"job_id": "j-1787000001", "job_name": "j"}).success is False
+
+
+def test_mount_table_parsing_ignores_autofs_and_accepts_cifs(tmp_path, monkeypatch):
+    table = tmp_path / "mounts"
+    table.write_text(
+        "proc /proc proc rw 0 0\n"
+        "systemd-1 /mnt/nas autofs rw 0 0\n"
+    )
+    real_open = open
+
+    def fake_open(path, *a, **k):
+        if str(path) == "/proc/self/mounts":
+            return real_open(table, *a, **k)
+        return real_open(path, *a, **k)
+
+    monkeypatch.setattr("builtins.open", fake_open)
+    assert NasUploader._is_real_mount(Path("/mnt/nas")) is False
+
+    table.write_text("//192.168.1.54/media /mnt/nas cifs rw 0 0\n")
+    assert NasUploader._is_real_mount(Path("/mnt/nas")) is True

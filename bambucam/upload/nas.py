@@ -31,20 +31,52 @@ class NasUploader(Uploader):
         self._mount_point = Path(mount_point)
         self._mount_check = mount_check
 
+    @staticmethod
+    def _is_real_mount(path: Path) -> bool:
+        """True if *path* carries a real filesystem, not just an autofs stub.
+
+        With x-systemd.automount the share is mounted on demand, so the mount
+        point always looks mounted to os.path.ismount even when the NAS is
+        unreachable. Read the mount table and reject the autofs placeholder.
+        """
+        want = str(path).rstrip("/") or "/"
+        try:
+            with open("/proc/self/mounts", encoding="utf-8") as table:
+                for line in table:
+                    fields = line.split()
+                    if len(fields) < 3:
+                        continue
+                    target = fields[1].replace("\040", " ").rstrip("/") or "/"
+                    if target == want and fields[2] != "autofs":
+                        return True
+            return False
+        except OSError:
+            # No /proc (non-Linux); fall back to the coarser check.
+            return os.path.ismount(path)
+
     def _assert_mounted(self) -> None:
         """A missing share looks like an ordinary empty directory.
 
-        Check the configured mount point explicitly. Inferring it by walking
-        ancestors for "some mount point" does not work: '/' always qualifies,
-        and on this Pi so does '/tmp', so the check would pass on paths that
-        are nowhere near the share.
+        Writing into it would fill the Pi's SD card while appearing to
+        succeed, and nobody would find the video afterwards.
         """
         if not self._mount_check:
             return
-        if not os.path.ismount(self._mount_point):
+
+        # Touch the path first: under automount the share is mounted on
+        # access, so checking before touching reports a healthy share as down.
+        try:
+            os.listdir(self._mount_point)
+        except OSError as e:
             raise RuntimeError(
-                f"{self._mount_point} is not mounted — refusing to archive "
-                "(writing here would fill the local disk instead of the NAS)"
+                f"{self._mount_point} is not reachable ({e}) — refusing to "
+                "archive (writing here would fill the local disk instead)"
+            ) from e
+
+        if not self._is_real_mount(self._mount_point):
+            raise RuntimeError(
+                f"{self._mount_point} has no filesystem mounted — refusing to "
+                "archive (writing here would fill the local disk instead)"
             )
 
     @staticmethod
