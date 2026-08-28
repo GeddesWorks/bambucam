@@ -95,6 +95,9 @@ class UploadConfig:
     nas: NasConfig = field(default_factory=NasConfig)
     retry_attempts: int = 3
     retry_backoff_seconds: list[float] = field(default_factory=lambda: [5.0, 15.0, 45.0])
+    # Periodically retry jobs stranded in an error state (e.g. the NAS was
+    # unmounted when the print finished). 0 disables the sweep.
+    retry_sweep_minutes: float = 15.0
 
 
 @dataclass

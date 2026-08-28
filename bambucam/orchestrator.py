@@ -58,7 +58,8 @@ class Orchestrator:
             return
         threading.Thread(target=self._capture_frame, daemon=True).start()
 
-    def recover_jobs(self) -> None:
+    def _unfinished_jobs(self):
+        """(job_path, meta) for every job that has not reached a good end."""
         if not self._base_dir.exists():
             return
         for job_path in sorted(self._base_dir.iterdir()):
@@ -66,57 +67,87 @@ class Orchestrator:
             if not meta_path.exists():
                 continue
             try:
-                data = json.loads(meta_path.read_text())
-                meta = JobMeta.from_dict(data)
+                meta = JobMeta.from_dict(json.loads(meta_path.read_text()))
             except (json.JSONDecodeError, KeyError):
                 logger.warning("Corrupt meta.json in %s, skipping", job_path,
                                extra={"event": "RECOVERY_SKIPPED"})
                 continue
-
             if meta.state == "IDLE" or meta.upload_status == "verified":
                 continue
+            yield job_path, meta
 
-            log_event(logger, "RECOVERY_STARTED",
-                      f"Resuming job {meta.job_id} from state {meta.state}",
-                      job_id=meta.job_id, state=meta.state)
+    def _resume_job(self, job_path: Path, meta: JobMeta, event: str) -> None:
+        log_event(logger, event,
+                  f"Resuming job {meta.job_id} from state {meta.state}",
+                  job_id=meta.job_id, state=meta.state)
 
-            self._job_dir = JobDirectory(
-                root=job_path,
-                frames_dir=job_path / "frames",
-                meta_path=meta_path,
-                events_log_path=job_path / "events.log",
-                video_path=job_path / "output.mp4",
-            )
-            self._meta = meta
-            self._frame_count = self._job_dir.frame_count()
-            state = State(meta.state)
+        self._job_dir = JobDirectory(
+            root=job_path,
+            frames_dir=job_path / "frames",
+            meta_path=job_path / "meta.json",
+            events_log_path=job_path / "events.log",
+            video_path=job_path / "output.mp4",
+        )
+        self._meta = meta
+        self._frame_count = self._job_dir.frame_count()
+        state = State(meta.state)
 
-            if state == State.CAPTURING:
-                self._meta.state = State.COMPILING.value
-                self._sm.force_state(State.COMPILING)
-                self._run_pipeline_from(State.COMPILING)
-            elif state in (State.COMPILING, State.UPLOADING,
-                           State.VERIFYING, State.CLEANUP):
-                self._sm.force_state(state)
-                self._run_pipeline_from(state)
-            elif state.name.startswith("ERROR_"):
-                recovery_map = {
-                    State.ERROR_COMPILE: State.COMPILING,
-                    State.ERROR_UPLOAD: State.UPLOADING,
-                    State.ERROR_CAMERA: State.COMPILING,
-                    State.ERROR_STORAGE: State.COMPILING,
-                }
-                resume = recovery_map.get(state, State.COMPILING)
-                self._sm.force_state(resume)
-                self._run_pipeline_from(resume)
+        if state == State.CAPTURING:
+            self._meta.state = State.COMPILING.value
+            self._sm.force_state(State.COMPILING)
+            self._run_pipeline_from(State.COMPILING)
+        elif state in (State.COMPILING, State.UPLOADING,
+                       State.VERIFYING, State.CLEANUP):
+            self._sm.force_state(state)
+            self._run_pipeline_from(state)
+        elif state.name.startswith("ERROR_"):
+            recovery_map = {
+                State.ERROR_COMPILE: State.COMPILING,
+                State.ERROR_UPLOAD: State.UPLOADING,
+                State.ERROR_CAMERA: State.COMPILING,
+                State.ERROR_STORAGE: State.COMPILING,
+            }
+            resume = recovery_map.get(state, State.COMPILING)
+            self._sm.force_state(resume)
+            self._run_pipeline_from(resume)
 
-            # _run_pipeline_from runs in a thread, and every job shares
-            # self._meta / self._job_dir. Starting the next job before this one
-            # finishes overwrites that state mid-flight: the finishing job's
-            # cleanup sets _meta to None and the next thread dies on
-            # 'NoneType' object has no attribute 'job_id', leaving the state
-            # machine wedged so later prints are refused as "not idle".
-            self._await_pipeline()
+        # _run_pipeline_from runs in a thread, and every job shares
+        # self._meta / self._job_dir. Starting the next job before this one
+        # finishes overwrites that state mid-flight: the finishing job's
+        # cleanup sets _meta to None and the next thread dies on
+        # 'NoneType' object has no attribute 'job_id', leaving the state
+        # machine wedged so later prints are refused as "not idle".
+        self._await_pipeline()
+
+    def recover_jobs(self) -> None:
+        for job_path, meta in self._unfinished_jobs():
+            self._resume_job(job_path, meta, "RECOVERY_STARTED")
+
+    def retry_stranded_jobs(self) -> int:
+        """Retry jobs left in an error state, e.g. after the NAS went away.
+
+        Without this a finished video sits in ERROR_UPLOAD until someone
+        restarts the daemon — which is how a print stayed unarchived for a day
+        after the share silently unmounted.
+
+        Only runs while idle: resuming a job rebinds the shared _meta and
+        _job_dir, which would corrupt a capture in progress.
+        """
+        if not self._sm.is_idle:
+            return 0
+
+        retried = 0
+        for job_path, meta in self._unfinished_jobs():
+            if not meta.state.startswith("ERROR_"):
+                continue
+            if not self._sm.is_idle:
+                break  # a print started while we were working
+            self._resume_job(job_path, meta, "RETRY_STARTED")
+            retried += 1
+        if retried:
+            log_event(logger, "RETRY_SWEEP_DONE",
+                      f"Retried {retried} stranded job(s)")
+        return retried
 
     def _await_pipeline(self, timeout: float = 3600.0) -> None:
         """Block until the running pipeline thread finishes, if any."""

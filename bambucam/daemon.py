@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import signal
 import threading
+import time
 from pathlib import Path
 
 from bambucam.camera.base import CameraService
@@ -11,6 +13,8 @@ from bambucam.logging import log_event, setup_logging
 from bambucam.orchestrator import Orchestrator
 from bambucam.printer.http import HttpPrinterProvider
 from bambucam.upload.base import Uploader
+
+logger = logging.getLogger("bambucam")
 
 DEFAULT_CONFIG_PATHS = [
     Path("config/config.yaml"),
@@ -35,6 +39,28 @@ def _build_camera(config: BambuCamConfig) -> CameraService:
         retries=config.camera.retries,
         retry_delay=config.camera.retry_delay_seconds,
     )
+
+
+def _start_retry_sweep(orchestrator, config) -> None:
+    """Retry stranded jobs on a timer so a transient NAS outage self-heals."""
+    minutes = config.upload.retry_sweep_minutes
+    if not minutes or minutes <= 0:
+        return
+
+    import threading
+
+    def sweep() -> None:
+        while True:
+            time.sleep(minutes * 60)
+            try:
+                orchestrator.retry_stranded_jobs()
+            except Exception as e:  # a sweep must never kill the daemon
+                logger.warning("Retry sweep failed: %s", e,
+                               extra={"event": "RETRY_SWEEP_FAILED"})
+
+    threading.Thread(target=sweep, daemon=True, name="retry-sweep").start()
+    logger.info("Retry sweep every %.0f min", minutes,
+                extra={"event": "RETRY_SWEEP_STARTED"})
 
 
 def _build_uploader(config: BambuCamConfig) -> Uploader:
@@ -86,6 +112,7 @@ def main() -> None:
 
     orchestrator = Orchestrator(config, camera, compiler, uploader)
     orchestrator.recover_jobs()
+    _start_retry_sweep(orchestrator, config)
 
     printer = HttpPrinterProvider(port=config.printer.http.listen_port)
     printer.start(callback=orchestrator.on_print_event)
