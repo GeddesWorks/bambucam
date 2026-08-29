@@ -403,6 +403,41 @@ last matching line reported an old failure as current — once blaming the camer
 when the fault was elsewhere, once declaring a running compile dead. Filter on
 the timestamp or watch a monotonic signal (the NAS file count) instead.
 
+## Stranded uploads retry themselves
+
+`upload.retry_sweep_minutes` (default 15, 0 disables) runs a background sweep
+that resumes any job left in an `ERROR_*` state. It exists because recovery
+only ran at startup, so a video stranded by a NAS outage sat unarchived until
+someone noticed and restarted the service.
+
+**The sweep skips entirely while capturing.** Resuming a job rebinds the shared
+`_meta`/`_job_dir`, which would corrupt a live print — the same shared-state
+hazard that once wedged recovery. It shares one `_resume_job` with startup
+recovery rather than duplicating the logic.
+
+Verified on the deployed daemon, not just in tests: a synthetic job planted in
+`ERROR_UPLOAD` was picked up on the next tick and archived unattended.
+
+### Restarting the daemon without wrecking a print
+
+Restarting mid-print is destructive: recovery treats the in-flight job as
+finished, compiles zero frames, goes IDLE, and the rest of the print is never
+captured. Waiting for `print_complete` is not enough either — compile and
+upload run after it.
+
+`/usr/local/sbin/bambucam-idle-restart` waits for all three of `printing:
+false`, `current_job: null`, and no `ffmpeg` process, re-checks after 45s, then
+restarts once and exits. Launch it detached so it outlives the session:
+
+```bash
+sudo systemd-run --unit=bambucam-idle-restart /usr/local/sbin/bambucam-idle-restart
+```
+
+**Do not use `ps -T | grep <thread-name>` to check a Python thread is alive.**
+CPython does not propagate thread names to the OS here — every thread shows as
+`python`, so the grep returns nothing whether the thread is running or not. It
+reads as a failure and is not one.
+
 ## Notes
 
 - Video compilation on the Pi 3B will be slow (~5-10 min for 200 frames).
