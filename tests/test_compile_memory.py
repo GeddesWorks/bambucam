@@ -26,7 +26,7 @@ def _command_for(tmp_path, **kwargs):
 
 def test_defaults_scale_down_and_cap_lookahead(tmp_path):
     cmd = _command_for(tmp_path)
-    assert "-vf" in cmd and "scale=1920:-2" in cmd
+    assert "-vf" in cmd and "scale=1920:-2" in cmd[cmd.index("-vf") + 1]
     params = cmd[cmd.index("-x264-params") + 1]
     assert "rc-lookahead=10" in params
     assert "sync-lookahead=0" in params
@@ -47,7 +47,7 @@ def test_x264_params_are_not_passed_to_other_codecs(tmp_path):
 def test_scale_keeps_even_height_for_yuv420p(tmp_path):
     """yuv420p requires even dimensions; -1 can produce an odd height."""
     cmd = _command_for(tmp_path, scale_width=1280)
-    assert "scale=1280:-2" in cmd
+    assert "scale=1280:-2" in cmd[cmd.index("-vf") + 1]
 
 
 def test_config_defaults_are_memory_safe():
