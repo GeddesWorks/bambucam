@@ -390,7 +390,27 @@ so every earlier compile succeeded and the ceiling went unnoticed until a real
 print hit it.
 
 Defaults now scale to 1920 wide, cap `rc-lookahead` at 10, disable
-`sync-lookahead`, and limit threads to 2. Measured on the failed job: **147s
+`sync-lookahead`, and limit threads to 2.
+
+**The memory ceiling was `rc_lookahead`, not the preset or the resolution.**
+The first fix also reached for `veryfast` and ffmpeg's default crf 23, and that
+cost real picture quality for no memory benefit. Measured by decoding a frame
+back out and comparing edge energy against the un-encoded downscale:
+
+| Encode | Edge energy | Share of achievable |
+|---|---|---|
+| source downscaled to 1920 (ceiling) | 2.40 | 100% |
+| 1920 / veryfast / crf 23 | 1.71 | 71% |
+| 1920 / medium / crf 18 / lanczos | 2.29 | 95% |
+| native 3008 / medium / crf 18 | 1.84 | preserves source |
+
+Defaults are now `preset medium`, `crf 18`, and a lanczos downscale. Native
+3008 encodes in ~290MB and ~1.2s/frame, so `scale_width: 0` is a genuine
+option if full resolution is ever wanted.
+
+**If a timelapse looks soft, check the encode before touching the camera.**
+The frames here were sharp at 100% the whole time; the video was where the
+detail went. Measured on the failed job: **147s
 instead of a projected ~19 min**, because scaling cuts the work as well as the
 memory. `scale_width: 0` restores native resolution if you ever move encoding
 to a bigger machine.
