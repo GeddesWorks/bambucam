@@ -61,3 +61,31 @@ def test_output_still_ends_with_the_destination_path(tmp_path):
     cmd = _command_for(tmp_path)
     assert cmd[-1].endswith("out.mp4")
     assert "+faststart" in cmd
+
+
+def test_quality_defaults_are_not_the_memory_panic_settings(tmp_path):
+    """veryfast + ffmpeg's default crf 23 decoded to 1.71 edge energy against
+    a 2.40 ceiling for the same downscale — about a third of the detail thrown
+    away. The memory ceiling was rc_lookahead, never the preset, so quality was
+    given up for nothing."""
+    cmd = _command_for(tmp_path)
+    assert cmd[cmd.index("-preset") + 1] == "medium"
+    assert int(cmd[cmd.index("-crf") + 1]) <= 20
+
+
+def test_downscale_uses_lanczos(tmp_path):
+    """A downscale is where most of the frame's detail is decided; the default
+    bicubic is visibly softer."""
+    cmd = _command_for(tmp_path)
+    assert "flags=lanczos" in cmd[cmd.index("-vf") + 1]
+
+
+def test_crf_can_be_disabled_for_codecs_that_do_not_take_it(tmp_path):
+    cmd = _command_for(tmp_path, crf=0)
+    assert "-crf" not in cmd
+
+
+def test_lookahead_is_still_capped_for_memory(tmp_path):
+    """Quality went up; the OOM guard must not have been traded away for it."""
+    cmd = _command_for(tmp_path)
+    assert "rc-lookahead=10" in cmd[cmd.index("-x264-params") + 1]

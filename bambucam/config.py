@@ -59,7 +59,12 @@ class CompileConfig:
     # of a long print gets OOM-killed partway through. Scaling down and
     # trimming the lookahead keeps it well inside memory and is ~8x faster.
     scale_width: int = 1920      # 0 keeps the camera's native resolution
-    preset: str = "veryfast"
+    # veryfast + the default crf 23 threw away about a third of the detail the
+    # frames actually held. Measured edge energy after decoding: 1.71 against a
+    # 2.40 ceiling for this resolution; medium + crf 18 recovers 2.29. The
+    # memory ceiling was never the preset, it was rc_lookahead.
+    preset: str = "medium"
+    crf: int = 18
     threads: int = 2
     rc_lookahead: int = 10
 

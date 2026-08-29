@@ -92,6 +92,7 @@ def _build_compiler(config: BambuCamConfig) -> FfmpegCompiler:
         preset=config.compile.preset,
         threads=config.compile.threads,
         rc_lookahead=config.compile.rc_lookahead,
+        crf=config.compile.crf,
     )
 
 

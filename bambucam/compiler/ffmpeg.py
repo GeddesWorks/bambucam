@@ -11,14 +11,15 @@ logger = logging.getLogger("bambucam")
 
 class FfmpegCompiler(Compiler):
     def __init__(self, codec: str = "libx264", pixel_format: str = "yuv420p",
-                 scale_width: int = 1920, preset: str = "veryfast",
-                 threads: int = 2, rc_lookahead: int = 10):
+                 scale_width: int = 1920, preset: str = "medium",
+                 threads: int = 2, rc_lookahead: int = 10, crf: int = 18):
         self._codec = codec
         self._pixel_format = pixel_format
         self._scale_width = scale_width
         self._preset = preset
         self._threads = threads
         self._rc_lookahead = rc_lookahead
+        self._crf = crf
 
     def compile(self, frames_dir: Path, output_path: Path,
                 fps: int = 30) -> bool:
@@ -37,11 +38,15 @@ class FfmpegCompiler(Compiler):
         # a long print inside the Pi's memory. -2 keeps the aspect ratio and
         # rounds to an even height, which yuv420p requires.
         if self._scale_width and self._scale_width > 0:
-            cmd += ["-vf", f"scale={self._scale_width}:-2"]
+            # lanczos resamples better than the default bicubic; a downscale
+            # is where most of the frame's detail is decided.
+            cmd += ["-vf", f"scale={self._scale_width}:-2:flags=lanczos"]
 
         cmd += ["-c:v", self._codec]
         if self._preset:
             cmd += ["-preset", self._preset]
+        if self._crf is not None and self._crf > 0:
+            cmd += ["-crf", str(self._crf)]
         if self._threads and self._threads > 0:
             cmd += ["-threads", str(self._threads)]
         if self._codec == "libx264" and self._rc_lookahead > 0:
